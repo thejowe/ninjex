@@ -100,6 +100,11 @@ const VENTA_RANGE := 80.0
 ## te acercas y pulsas una tecla" que Comprador, solo que con otro nombre
 ## para que quede claro que es un concepto distinto (casino, no venta).
 const CASINO_RANGE := 80.0
+## Rango de interaccion con los puntos del Hub (H5): Forja, Herboristeria,
+## Taberna. Mismo criterio que CASINO_RANGE de arriba -- punto estatico,
+## deteccion por distancia simple, solo con otro nombre para dejar claro que
+## es la tanda del Hub y no la del casino.
+const HUB_RANGE := 80.0
 ## Con que moneda se apuesta en la mesa de dados ahora mismo: "limpio" o
 ## "manchado". El brief define la manchada como "solo cambiable en el
 ## casino" (2.3), pero el usuario quiere ademas la via tematica de blanquear
@@ -162,6 +167,46 @@ var _potenciador_dash_total_time: float = 0.0
 var _potenciador_dash_from: Vector2
 var _potenciador_dash_to: Vector2
 
+# --- Forja (H5 tarea 2) ---------------------------------------------------
+## +7% / +14% / +20% de daño segun NetworkManager.forja_nivel[peer_id]
+## (indice = nivel, 0 = sin mejorar). Regla invariante del brief (seccion 4):
+## "ninguna mejora permanente supera el +20% sobre la base" -- el nivel 3 se
+## queda justo en el techo, no lo supera.
+const FORJA_BONUS_POR_NIVEL: Array[float] = [0.0, 0.07, 0.14, 0.20]
+
+# --- Herboristeria (H5 tarea 3): inventario de consumibles ----------------
+## Adaptacion del brief 2.4 ("maximo 3 por jugador Y MISION" -> sin concepto
+## de mision real todavia, ver comentario de cabecera de herboristeria.gd):
+## "3 cargados a la vez, se recargan comprando mas". Mismo patron que
+## carried_cadaver_paths -- array simple con un tope, mutado solo via
+## confirm_*() del host.
+const MAX_CONSUMIBLES_CARGADOS := 3
+var consumibles: Array[String] = []
+
+## Pildora de soldado: recupera chakra al instante. Cantidad razonable frente
+## a chakra_max=100 tipico -- no rellena la barra entera, pero saca de un
+## apuro real.
+const PILDORA_CHAKRA_AMOUNT := 40.0
+## Unguento: cura por goteo 20s (brief 2.4 literal). Total curado repartido
+## a lo largo de la duracion.
+const UNGUENTO_DURATION := 20.0
+const UNGUENTO_TOTAL_HEAL := 40.0
+var _unguento_time_remaining: float = 0.0
+var _unguento_heal_per_second: float = 0.0
+## Bomba de humo: "escape garantizado" (brief 2.4) -- adaptado a
+## invulnerabilidad + velocidad brevemente, en vez de un teletransporte real
+## (mas simple de implementar y de leer en pantalla sin arte/VFX, y cumple
+## igual "te saca de una situacion mala" sin arriesgar teletransportarte
+## dentro de una pared).
+const BOMBA_HUMO_DURATION := 2.5
+const BOMBA_HUMO_SPEED_MULTIPLIER := 1.6
+var _bomba_humo_time_remaining: float = 0.0
+## Sales: reducen el desgaste (drenaje de vida) de las Puertas durante un
+## tiempo -- ver _handle_puertas() y style_data.puertas_life_drain_per_second_per_level.
+const SALES_DURATION := 15.0
+const SALES_DRAIN_REDUCTION := 0.5
+var _sales_time_remaining: float = 0.0
+
 func _ready() -> void:
 	if style_data == null:
 		style_data = load(DEFAULT_STYLE_PATH)
@@ -217,6 +262,9 @@ func _physics_process(delta: float) -> void:
 		_handle_impulse_cooldown(delta)
 		_handle_collision_ignore(delta)
 		_handle_potenciador_timer(delta)
+		_handle_unguento(delta)
+		_handle_bomba_humo(delta)
+		_handle_sales(delta)
 		_process_impulse_motion(delta)
 		_process_potenciador_dash(delta)
 		_handle_movement()
@@ -252,6 +300,20 @@ func _physics_process(delta: float) -> void:
 			_toggle_apuesta_moneda()
 		if Input.is_action_just_pressed("pedir_prestamo"):
 			_request_prestamo_usurero()
+		if Input.is_action_just_pressed("comprar_forja"):
+			_request_mejorar_forja()
+		if Input.is_action_just_pressed("comprar_pildora"):
+			_request_comprar_consumible(Herboristeria.TIPO_PILDORA)
+		if Input.is_action_just_pressed("comprar_unguento"):
+			_request_comprar_consumible(Herboristeria.TIPO_UNGUENTO)
+		if Input.is_action_just_pressed("comprar_bomba_humo"):
+			_request_comprar_consumible(Herboristeria.TIPO_BOMBA_HUMO)
+		if Input.is_action_just_pressed("comprar_sales"):
+			_request_comprar_consumible(Herboristeria.TIPO_SALES)
+		if Input.is_action_just_pressed("usar_consumible"):
+			_request_usar_consumible()
+		if Input.is_action_just_pressed("brindis_taberna"):
+			_request_brindis()
 	move_and_slide()
 
 ## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
@@ -333,14 +395,57 @@ func _handle_potenciador_timer(delta: float) -> void:
 			_potenciador_damage_bonus = 0.0
 			_update_potenciador_visual()
 
+## Ungüento (H5, Herboristeria): cura por goteo mientras dure. Prediccion
+## local igual que el drenaje de vida de las Puertas (_handle_puertas) --
+## vida_actual es un coste/beneficio propio, no hace falta ir al host cada
+## fotograma para curarse un poco.
+func _handle_unguento(delta: float) -> void:
+	if _unguento_time_remaining > 0.0:
+		_unguento_time_remaining -= delta
+		vida_actual = min(vida_actual + _unguento_heal_per_second * delta, style_data.vida_maxima)
+		if _unguento_time_remaining <= 0.0:
+			_unguento_time_remaining = 0.0
+			_unguento_heal_per_second = 0.0
+
+## Bomba de humo (H5, Herboristeria): solo cuenta atras el timer -- la
+## invulnerabilidad la mira confirm_damage_taken() y el boost de velocidad
+## lo mira _current_speed_multiplier(), ambos consultando
+## _bomba_humo_time_remaining > 0.0 directamente.
+func _handle_bomba_humo(delta: float) -> void:
+	if _bomba_humo_time_remaining > 0.0:
+		_bomba_humo_time_remaining = max(_bomba_humo_time_remaining - delta, 0.0)
+
+## Sales (H5, Herboristeria): solo cuenta atras el timer -- la reduccion del
+## desgaste de las Puertas la mira _handle_puertas() directamente.
+func _handle_sales(delta: float) -> void:
+	if _sales_time_remaining > 0.0:
+		_sales_time_remaining = max(_sales_time_remaining - delta, 0.0)
+
+## Avanza por un tramo de un lerp(from, to) usando move_and_collide() en vez
+## de teletransportar global_position directamente -- BUG real reportado:
+## dashear (Impulso, Espacio) hacia una pared la atravesaba y sacaba al
+## jugador del mapa, porque el codigo anterior asignaba global_position sin
+## pasar nunca por colision. Se usan dos ratios (antes/despues de este
+## fotograma) para poder pedir solo el DESPLAZAMIENTO de este frame -- si
+## move_and_collide choca con algo, el jugador se para ahi en vez de
+## atravesarlo, sea Impulso o el dash del Potenciador de Viento (mismo bug,
+## mismo arreglo). El collision_mask de Viento se sigue desactivando aparte
+## (ver _handle_collision_ignore) para que SU Impulso si pueda saltar
+## desniveles a proposito -- move_and_collide respeta ese mask igual que
+## cualquier otro movimiento, asi que no hace falta tratar Viento distinto
+## aqui.
+func _move_lerp_step(from: Vector2, to: Vector2, ratio_antes: float, ratio_despues: float) -> void:
+	var punto_antes: Vector2 = from.lerp(to, clamp(ratio_antes, 0.0, 1.0))
+	var punto_despues: Vector2 = from.lerp(to, clamp(ratio_despues, 0.0, 1.0))
+	move_and_collide(punto_despues - punto_antes)
+
 func _process_potenciador_dash(delta: float) -> void:
 	if _potenciador_dash_active_time <= 0.0:
 		return
+	var t_antes: float = 1.0 - clamp(_potenciador_dash_active_time / max(_potenciador_dash_total_time, 0.001), 0.0, 1.0)
 	_potenciador_dash_active_time -= delta
-	var t: float = 1.0 - clamp(_potenciador_dash_active_time / max(_potenciador_dash_total_time, 0.001), 0.0, 1.0)
-	global_position = _potenciador_dash_from.lerp(_potenciador_dash_to, t)
-	if _potenciador_dash_active_time <= 0.0:
-		global_position = _potenciador_dash_to
+	var t_despues: float = 1.0 - clamp(_potenciador_dash_active_time / max(_potenciador_dash_total_time, 0.001), 0.0, 1.0)
+	_move_lerp_step(_potenciador_dash_from, _potenciador_dash_to, t_antes, t_despues)
 
 ## Ayuda de playtest solo local (no pasa por red): cambia style_data del
 ## propio jugador. Ver comentario de cabecera.
@@ -357,14 +462,37 @@ func _handle_debug_style_switch() -> void:
 		_apply_style_reset()
 
 func _current_speed_multiplier() -> float:
-	if not style_data.melee_only or puertas_nivel <= 0:
-		return 1.0
-	return 1.0 + puertas_nivel * style_data.puertas_speed_multiplier_per_level
+	var mult := 1.0
+	if style_data.melee_only and puertas_nivel > 0:
+		mult *= 1.0 + puertas_nivel * style_data.puertas_speed_multiplier_per_level
+	# Bomba de humo (H5, Herboristeria): escape garantizado -- velocidad
+	# breve ademas de la invulnerabilidad (ver confirm_damage_taken).
+	if _bomba_humo_time_remaining > 0.0:
+		mult *= BOMBA_HUMO_SPEED_MULTIPLIER
+	return mult
 
+## H5 tarea 2: se extiende para multiplicar tambien por el nivel de Forja
+## del jugador (NetworkManager.forja_nivel, persistente por peer_id) y por el
+## brindis de grupo de la Taberna (NetworkManager.brindis_damage_multiplier,
+## activo para todos mientras dure) -- antes solo consideraba las Puertas
+## del Fisico. Se usa en TODOS los sitios que ya usaban esta funcion
+## (Basico de los 3 estilos, Lanzamiento y embestida del Fisico), asi que la
+## Forja y el brindis suben el daño de cualquier estilo, no solo Fisico.
 func _current_damage_multiplier() -> float:
-	if not style_data.melee_only or puertas_nivel <= 0:
-		return 1.0
-	return 1.0 + puertas_nivel * style_data.puertas_damage_multiplier_per_level
+	var mult := 1.0
+	if style_data.melee_only and puertas_nivel > 0:
+		mult *= 1.0 + puertas_nivel * style_data.puertas_damage_multiplier_per_level
+	mult *= _forja_damage_multiplier()
+	mult *= NetworkManager.brindis_damage_multiplier
+	return mult
+
+## Nivel de Forja de ESTE jugador (por peer_id, ver NetworkManager.forja_nivel)
+## traducido a multiplicador de daño. clampi() cubre tanto "sin entrada en
+## el Dictionary" (Dictionary.get devuelve el default 0) como un nivel fuera
+## de rango por seguridad.
+func _forja_damage_multiplier() -> float:
+	var nivel: int = clampi(NetworkManager.forja_nivel.get(get_multiplayer_authority(), 0), 0, FORJA_BONUS_POR_NIVEL.size() - 1)
+	return 1.0 + FORJA_BONUS_POR_NIVEL[nivel]
 
 ## Peso del botin (H2 tarea 4): cuantos mas cadaveres cargues, mas lento
 ## vuelves. Lineal con un suelo minimo, no depende del estilo (a diferencia
@@ -502,6 +630,46 @@ func _find_nearest_usurero_in_range(range_max: float) -> Usurero:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = u
+	return nearest
+
+## Forja mas cercana dentro de range_max. Misma proximidad simple que las
+## funciones de arriba -- la Forja tambien es estatica.
+func _find_nearest_forja_in_range(range_max: float) -> Forja:
+	var nearest: Forja = null
+	var best_dist: float = INF
+	for f in get_tree().get_nodes_in_group(Forja.GRUPO_FORJAS):
+		if not (f is Forja):
+			continue
+		var dist: float = global_position.distance_to(f.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = f
+	return nearest
+
+## Herboristeria mas cercana dentro de range_max. Misma proximidad simple.
+func _find_nearest_herboristeria_in_range(range_max: float) -> Herboristeria:
+	var nearest: Herboristeria = null
+	var best_dist: float = INF
+	for h in get_tree().get_nodes_in_group(Herboristeria.GRUPO_HERBORISTERIAS):
+		if not (h is Herboristeria):
+			continue
+		var dist: float = global_position.distance_to(h.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = h
+	return nearest
+
+## Taberna mas cercana dentro de range_max. Misma proximidad simple.
+func _find_nearest_taberna_in_range(range_max: float) -> Taberna:
+	var nearest: Taberna = null
+	var best_dist: float = INF
+	for t in get_tree().get_nodes_in_group(Taberna.GRUPO_TABERNAS):
+		if not (t is Taberna):
+			continue
+		var dist: float = global_position.distance_to(t.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = t
 	return nearest
 
 func _validate_sender() -> bool:
@@ -857,11 +1025,10 @@ func confirm_impulse(from_pos: Vector2, to_pos: Vector2) -> void:
 func _process_impulse_motion(delta: float) -> void:
 	if _impulse_active_time <= 0.0:
 		return
+	var t_antes: float = 1.0 - clamp(_impulse_active_time / max(style_data.impulse_travel_time, 0.001), 0.0, 1.0)
 	_impulse_active_time -= delta
-	var t: float = 1.0 - clamp(_impulse_active_time / max(style_data.impulse_travel_time, 0.001), 0.0, 1.0)
-	global_position = _impulse_from.lerp(_impulse_to, t)
-	if _impulse_active_time <= 0.0:
-		global_position = _impulse_to
+	var t_despues: float = 1.0 - clamp(_impulse_active_time / max(style_data.impulse_travel_time, 0.001), 0.0, 1.0)
+	_move_lerp_step(_impulse_from, _impulse_to, t_antes, t_despues)
 
 ## Fisico: embestida, atraviesa enemigos en el camino. Solo se llama cuando
 ## multiplayer.is_server() es true (dentro de confirm_impulse), asi el
@@ -911,7 +1078,10 @@ func _handle_puertas(delta: float) -> void:
 		# hace falta ir al host: es un coste propio, no un danio a un
 		# recurso compartido); se deja un minimo de 1.0 porque no hay
 		# muerte/respawn de jugador implementado todavia.
-		vida_actual = max(vida_actual - style_data.puertas_life_drain_per_second_per_level * puertas_nivel * delta, 1.0)
+		# Sales (H5, Herboristeria): reducen este desgaste mientras dure el
+		# efecto -- ver _handle_sales() y SALES_DRAIN_REDUCTION.
+		var drain_mult := SALES_DRAIN_REDUCTION if _sales_time_remaining > 0.0 else 1.0
+		vida_actual = max(vida_actual - style_data.puertas_life_drain_per_second_per_level * puertas_nivel * drain_mult * delta, 1.0)
 		if puertas_nivel < style_data.puertas_niveles_max and _puertas_tiempo_en_nivel >= style_data.puertas_tiempo_por_nivel:
 			_puertas_tiempo_en_nivel = 0.0
 			submit_puertas_level_up.rpc_id(1)
@@ -1115,6 +1285,13 @@ func recibir_daño(tipo_daño: String, cantidad: float) -> void:
 ## llegaba al peer dueño del personaje -- vida_actual se desincronizaba.
 @rpc("any_peer", "call_local", "reliable")
 func confirm_damage_taken(_tipo_daño: String, cantidad: float) -> void:
+	# Bomba de humo (H5, Herboristeria): invulnerabilidad breve mientras se
+	# escapa -- se ignora el daño entero, no solo se reduce. Corre igual en
+	# todos los peers porque _bomba_humo_time_remaining ya esta sincronizado
+	# via confirm_usar_consumible (call_local reliable), asi que el
+	# resultado es el mismo en todas las copias de este nodo.
+	if _bomba_humo_time_remaining > 0.0:
+		return
 	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador, 0.0)
 
 # =========================================================================
@@ -1404,3 +1581,156 @@ func confirm_pedir_prestamo_usurero(nuevo_limpio: float, monto: float, recorte_p
 	print("[Usurero] Prestamo de %.1f limpio -- deuda activa: %d transacciones al %.0f%% de recorte" % [monto, num_transacciones, recorte_porcentaje * 100.0])
 	_status_label.modulate = Color(1, 0.6, 0.6)
 	_status_label.text = "Usurero: +%.0f limpio -- deuda activa (%d transacciones al %.0f%% de recorte)" % [monto, num_transacciones, recorte_porcentaje * 100.0]
+
+# =========================================================================
+# Forja (H5 tarea 2, Calle de los Faroles) -- tecla Y. Mismo patron
+# submit_/confirm_ que el resto: el cliente pide, el host decide (que Forja
+# esta en rango, el precio del siguiente nivel, si hay dinero limpio
+# suficiente en el pool compartido) y confirma con un RPC call_local que
+# aplica el resultado igual en todos los peers.
+# =========================================================================
+
+func _request_mejorar_forja() -> void:
+	submit_mejorar_forja.rpc_id(1)
+
+## Mejora SIEMPRE al siguiente nivel (no se puede saltar ni elegir uno
+## menor) -- mismo criterio de "una sola accion obvia por tecla" que el
+## resto del casino/economia en este vertical slice sin UI real.
+@rpc("any_peer", "call_local", "reliable")
+func submit_mejorar_forja() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var forja := _find_nearest_forja_in_range(HUB_RANGE)
+	if forja == null:
+		confirm_casino_mensaje.rpc("No hay ninguna forja cerca")
+		return
+	var peer_id := get_multiplayer_authority()
+	var nivel_actual: int = NetworkManager.forja_nivel.get(peer_id, 0)
+	if nivel_actual >= FORJA_BONUS_POR_NIVEL.size() - 1:
+		confirm_casino_mensaje.rpc("Tu arma ya esta al maximo nivel de forja")
+		return
+	var nivel_objetivo := nivel_actual + 1
+	var precio: float = forja.precio_para_nivel(nivel_objetivo)
+	if NetworkManager.dinero_limpio < precio:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para mejorar la forja (nivel %d)" % [precio, nivel_objetivo])
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - precio
+	confirm_mejorar_forja.rpc(peer_id, nivel_objetivo, nuevo_limpio)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_mejorar_forja(peer_id: int, nivel: int, nuevo_limpio: float) -> void:
+	NetworkManager.forja_nivel[peer_id] = nivel
+	NetworkManager.dinero_limpio = nuevo_limpio
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = "Forja mejorada a nivel %d (+%.0f%% daño)" % [nivel, FORJA_BONUS_POR_NIVEL[nivel] * 100.0]
+
+# =========================================================================
+# Herboristeria (H5 tarea 3, Calle de los Faroles) -- comprar con P/H/J/L,
+# usar el mas reciente con I. Mismo patron submit_/confirm_ que el resto.
+# =========================================================================
+
+func _request_comprar_consumible(tipo: String) -> void:
+	submit_comprar_consumible.rpc_id(1, tipo)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_comprar_consumible(tipo: String) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var herb := _find_nearest_herboristeria_in_range(HUB_RANGE)
+	if herb == null:
+		confirm_casino_mensaje.rpc("No hay ninguna herboristeria cerca")
+		return
+	if consumibles.size() >= MAX_CONSUMIBLES_CARGADOS:
+		confirm_casino_mensaje.rpc("Ya llevas el maximo de consumibles cargados (%d)" % MAX_CONSUMIBLES_CARGADOS)
+		return
+	var precio: float = herb.precio_de(tipo)
+	if precio < 0.0:
+		return # tipo invalido, no deberia pasar nunca desde los botones del jugador
+	if NetworkManager.dinero_limpio < precio:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para comprar eso" % precio)
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - precio
+	confirm_comprar_consumible.rpc(tipo, nuevo_limpio)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_comprar_consumible(tipo: String, nuevo_limpio: float) -> void:
+	consumibles.append(tipo)
+	NetworkManager.dinero_limpio = nuevo_limpio
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = "Comprado: %s (%d/%d cargados)" % [tipo, consumibles.size(), MAX_CONSUMIBLES_CARGADOS]
+
+func _request_usar_consumible() -> void:
+	submit_usar_consumible.rpc_id(1)
+
+## Usa siempre el ULTIMO comprado (mas reciente, LIFO) -- brief: "una tecla
+## para usar el consumible seleccionado/mas reciente". Sin UI de inventario
+## en este vertical slice, "el mas reciente" es la unica seleccion posible
+## sin anadir una pantalla propia solo para esto.
+@rpc("any_peer", "call_local", "reliable")
+func submit_usar_consumible() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if consumibles.is_empty():
+		confirm_casino_mensaje.rpc("No tienes ningun consumible cargado")
+		return
+	var tipo: String = consumibles[-1]
+	confirm_usar_consumible.rpc(tipo)
+
+## Aplica el efecto real de `tipo` (ver comentario de cabecera de
+## herboristeria.gd) y descarta el consumible usado. Todos los efectos son
+## deterministas (sin RNG), asi que aplicarlos igual en todos los peers
+## dentro de este RPC call_local basta -- no hace falta que el host calcule
+## nada aparte y lo mande como parametro, a diferencia de p.ej. los dados.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_usar_consumible(tipo: String) -> void:
+	if consumibles.is_empty():
+		return
+	consumibles.remove_at(consumibles.size() - 1)
+	match tipo:
+		Herboristeria.TIPO_PILDORA:
+			chakra_current = min(chakra_current + PILDORA_CHAKRA_AMOUNT, style_data.chakra_max)
+		Herboristeria.TIPO_UNGUENTO:
+			_unguento_time_remaining = UNGUENTO_DURATION
+			_unguento_heal_per_second = UNGUENTO_TOTAL_HEAL / UNGUENTO_DURATION
+		Herboristeria.TIPO_BOMBA_HUMO:
+			_bomba_humo_time_remaining = BOMBA_HUMO_DURATION
+		Herboristeria.TIPO_SALES:
+			_sales_time_remaining = SALES_DURATION
+	_status_label.modulate = Color(0.6, 1, 0.8)
+	_status_label.text = "Usaste: %s (%d restantes)" % [tipo, consumibles.size()]
+
+# =========================================================================
+# Taberna "El Ancla Rota" (H5 tarea 4, Muelle) -- tecla X. A diferencia del
+# resto de esta tanda, el resultado NO es individual: afecta a TODOS los
+# jugadores conectados, asi que el estado del buff vive en NetworkManager
+# (ver confirm_brindis alli) en vez de en este nodo -- mismo patron
+# submit_/confirm_ en cuanto a validacion (cliente pide, host decide), pero
+# la confirmacion apunta a un nodo distinto de self.
+# =========================================================================
+
+func _request_brindis() -> void:
+	submit_brindis.rpc_id(1)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_brindis() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var taberna := _find_nearest_taberna_in_range(HUB_RANGE)
+	if taberna == null:
+		confirm_casino_mensaje.rpc("No hay ninguna taberna cerca")
+		return
+	if NetworkManager.dinero_limpio < taberna.costo_brindis:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para el brindis" % taberna.costo_brindis)
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - taberna.costo_brindis
+	var multiplicador: float = 1.0 + taberna.brindis_bonus_daño
+	NetworkManager.confirm_brindis.rpc(nuevo_limpio, taberna.brindis_duracion, multiplicador)
+	confirm_casino_mensaje.rpc("Brindis en El Ancla Rota: +%.0f%% de daño para todo el grupo durante %.0f s" % [taberna.brindis_bonus_daño * 100.0, taberna.brindis_duracion])

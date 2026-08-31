@@ -63,6 +63,51 @@ func next_cadaver_id() -> int:
 	_next_cadaver_id += 1
 	return _next_cadaver_id - 1
 
+## Nivel de Forja (H5 tarea 2) de CADA jugador -- peer_id -> nivel (0-3).
+## A diferencia de dinero_manchado/dinero_limpio (pools compartidos), esto es
+## POR JUGADOR: cada peer_id mejora su propia arma con dinero limpio del pool
+## compartido. Sin entrada en el Dictionary == nivel 0 (sin mejorar). Solo lo
+## muta el host, siempre desde dentro de un RPC call_local
+## (player.gd confirm_mejorar_forja), mismo patron que el resto de estado
+## compartido. Player._current_damage_multiplier() lo lee cada vez que
+## calcula daño real.
+var forja_nivel: Dictionary = {}
+
+## Brindis de la Taberna (H5 tarea 4): buff de GRUPO temporal, activo para
+## TODOS los jugadores conectados mientras dure -- Player._current_damage_multiplier()
+## multiplica por brindis_damage_multiplier sin importar quien pago la ronda
+## (brief seccion 4: "los bonus de comida y casa se aplican a todo el grupo,
+## no solo a quien pago"). Arranca via el RPC call_local de Taberna (ver
+## player.gd submit_brindis/confirm_brindis mas abajo); el contador en si se
+## decrementa localmente en cada peer via _process() de este autoload -- no
+## hace falta que el segundo exacto en que expira coincida entre peers, es
+## un buff temporal de sabor, no un recurso compartido que se pueda gastar
+## mal si diverge un frame.
+var brindis_time_remaining: float = 0.0
+var brindis_damage_multiplier: float = 1.0
+
+func _process(delta: float) -> void:
+	if brindis_time_remaining > 0.0:
+		brindis_time_remaining -= delta
+		if brindis_time_remaining <= 0.0:
+			brindis_time_remaining = 0.0
+			brindis_damage_multiplier = 1.0
+
+## Confirma el brindis igual en todos los peers: descuenta el coste del pool
+## compartido de dinero limpio y activa el buff de grupo. Vive aqui (en el
+## autoload, no en player.gd) porque afecta a TODOS los jugadores conectados
+## a la vez, no a un unico personaje -- a diferencia del resto de
+## confirm_*() de esta tanda (Forja/Herboristeria), que son mejoras
+## individuales y por eso viven en player.gd. Lo llama el host desde
+## player.gd submit_brindis(), nunca el cliente directamente (mismo patron
+## de confianza que el resto de confirm_* del proyecto: solo el submit_ que
+## lo precede esta filtrado por multiplayer.is_server()+_validate_sender()).
+@rpc("any_peer", "call_local", "reliable")
+func confirm_brindis(nuevo_limpio: float, duracion: float, multiplicador: float) -> void:
+	dinero_limpio = nuevo_limpio
+	brindis_time_remaining = duracion
+	brindis_damage_multiplier = multiplicador
+
 func host_game() -> void:
 	# multiplayer.multiplayer_peer NUNCA es null por defecto: Godot le pone un
 	# OfflineMultiplayerPeer de por si. Comprobar "!= null" no detecta ese caso

@@ -1,0 +1,548 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/economy/forja.tscn" id="1_forja"]
+[ext_resource type="PackedScene" path="res://scenes/economy/herboristeria.tscn" id="2_herb"]
+[ext_resource type="PackedScene" path="res://scenes/economy/taberna.tscn" id="3_taberna"]
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_h_1024"]
+size = Vector2(1024, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_v_768"]
+size = Vector2(32, 768)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_half_400"]
+size = Vector2(400, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_muelle_left_split"]
+size = Vector2(32, 320)
+
+[sub_resource type="RectangleShape2D" id="Shape_staircase_wall"]
+size = Vector2(32, 400)
+
+[sub_resource type="RectangleShape2D" id="Shape_corridor_wall"]
+size = Vector2(426, 32)
+
+[node name="Hub" type="Node2D"]
+
+[node name="CorredorTestRoom" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="CorredorTestRoom"]
+offset_left = 1024.0
+offset_top = 320.0
+offset_right = 1450.0
+offset_bottom = 448.0
+mouse_filter = 2
+color = Color(0.15, 0.18, 0.2, 1)
+
+[node name="WallTop" type="StaticBody2D" parent="CorredorTestRoom"]
+position = Vector2(1237, 304)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CorredorTestRoom/WallTop"]
+shape = SubResource("Shape_corridor_wall")
+
+[node name="Visual" type="ColorRect" parent="CorredorTestRoom/WallTop"]
+offset_left = -213.0
+offset_top = -16.0
+offset_right = 213.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallBottom" type="StaticBody2D" parent="CorredorTestRoom"]
+position = Vector2(1237, 464)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CorredorTestRoom/WallBottom"]
+shape = SubResource("Shape_corridor_wall")
+
+[node name="Visual" type="ColorRect" parent="CorredorTestRoom/WallBottom"]
+offset_left = -213.0
+offset_top = -16.0
+offset_right = 213.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="Muelle" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="Muelle"]
+offset_left = 1450.0
+offset_top = 0.0
+offset_right = 2474.0
+offset_bottom = 768.0
+mouse_filter = 2
+color = Color(0.14, 0.2, 0.24, 1)
+
+[node name="WallTopLeft" type="StaticBody2D" parent="Muelle"]
+position = Vector2(1650, 16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Muelle/WallTopLeft"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="Muelle/WallTopLeft"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallTopRight" type="StaticBody2D" parent="Muelle"]
+position = Vector2(2274, 16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Muelle/WallTopRight"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="Muelle/WallTopRight"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallBottom" type="StaticBody2D" parent="Muelle"]
+position = Vector2(1962, 752)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Muelle/WallBottom"]
+shape = SubResource("Shape_wall_h_1024")
+
+[node name="Visual" type="ColorRect" parent="Muelle/WallBottom"]
+offset_left = -512.0
+offset_top = -16.0
+offset_right = 512.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallLeftTop" type="StaticBody2D" parent="Muelle"]
+position = Vector2(1466, 160)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Muelle/WallLeftTop"]
+shape = SubResource("Shape_muelle_left_split")
+
+[node name="Visual" type="ColorRect" parent="Muelle/WallLeftTop"]
+offset_left = -16.0
+offset_top = -160.0
+offset_right = 16.0
+offset_bottom = 160.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallLeftBottom" type="StaticBody2D" parent="Muelle"]
+position = Vector2(1466, 608)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Muelle/WallLeftBottom"]
+shape = SubResource("Shape_muelle_left_split")
+
+[node name="Visual" type="ColorRect" parent="Muelle/WallLeftBottom"]
+offset_left = -16.0
+offset_top = -160.0
+offset_right = 16.0
+offset_bottom = 160.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="Muelle"]
+position = Vector2(2458, 384)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Muelle/WallRight"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="Muelle/WallRight"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="TabernaAnclaRota" parent="Muelle" instance=ExtResource("3_taberna")]
+position = Vector2(2250, 600)
+
+[node name="Escalera1" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="Escalera1"]
+offset_left = 1850.0
+offset_top = -400.0
+offset_right = 2074.0
+offset_bottom = 0.0
+mouse_filter = 2
+color = Color(0.18, 0.16, 0.2, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="Escalera1"]
+position = Vector2(1834, -200)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Escalera1/WallLeft"]
+shape = SubResource("Shape_staircase_wall")
+
+[node name="Visual" type="ColorRect" parent="Escalera1/WallLeft"]
+offset_left = -16.0
+offset_top = -200.0
+offset_right = 16.0
+offset_bottom = 200.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="Escalera1"]
+position = Vector2(2090, -200)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Escalera1/WallRight"]
+shape = SubResource("Shape_staircase_wall")
+
+[node name="Visual" type="ColorRect" parent="Escalera1/WallRight"]
+offset_left = -16.0
+offset_top = -200.0
+offset_right = 16.0
+offset_bottom = 200.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="CalleFaroles" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="CalleFaroles"]
+offset_left = 1450.0
+offset_top = -1168.0
+offset_right = 2474.0
+offset_bottom = -400.0
+mouse_filter = 2
+color = Color(0.22, 0.16, 0.1, 1)
+
+[node name="WallBottomLeft" type="StaticBody2D" parent="CalleFaroles"]
+position = Vector2(1650, -416)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CalleFaroles/WallBottomLeft"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="CalleFaroles/WallBottomLeft"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallBottomRight" type="StaticBody2D" parent="CalleFaroles"]
+position = Vector2(2274, -416)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CalleFaroles/WallBottomRight"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="CalleFaroles/WallBottomRight"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallTopLeft" type="StaticBody2D" parent="CalleFaroles"]
+position = Vector2(1650, -1152)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CalleFaroles/WallTopLeft"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="CalleFaroles/WallTopLeft"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallTopRight" type="StaticBody2D" parent="CalleFaroles"]
+position = Vector2(2274, -1152)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CalleFaroles/WallTopRight"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="CalleFaroles/WallTopRight"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="CalleFaroles"]
+position = Vector2(1466, -784)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CalleFaroles/WallLeft"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="CalleFaroles/WallLeft"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="CalleFaroles"]
+position = Vector2(2458, -784)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CalleFaroles/WallRight"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="CalleFaroles/WallRight"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="Forja" parent="CalleFaroles" instance=ExtResource("1_forja")]
+position = Vector2(1650, -950)
+
+[node name="Herboristeria" parent="CalleFaroles" instance=ExtResource("2_herb")]
+position = Vector2(2250, -950)
+
+[node name="Escalera2" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="Escalera2"]
+offset_left = 1850.0
+offset_top = -1568.0
+offset_right = 2074.0
+offset_bottom = -1168.0
+mouse_filter = 2
+color = Color(0.18, 0.16, 0.2, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="Escalera2"]
+position = Vector2(1834, -1368)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Escalera2/WallLeft"]
+shape = SubResource("Shape_staircase_wall")
+
+[node name="Visual" type="ColorRect" parent="Escalera2/WallLeft"]
+offset_left = -16.0
+offset_top = -200.0
+offset_right = 16.0
+offset_bottom = 200.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="Escalera2"]
+position = Vector2(2090, -1368)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Escalera2/WallRight"]
+shape = SubResource("Shape_staircase_wall")
+
+[node name="Visual" type="ColorRect" parent="Escalera2/WallRight"]
+offset_left = -16.0
+offset_top = -200.0
+offset_right = 16.0
+offset_bottom = 200.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="MuelleAlto" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="MuelleAlto"]
+offset_left = 1450.0
+offset_top = -2336.0
+offset_right = 2474.0
+offset_bottom = -1568.0
+mouse_filter = 2
+color = Color(0.2, 0.14, 0.22, 1)
+
+[node name="WallBottomLeft" type="StaticBody2D" parent="MuelleAlto"]
+position = Vector2(1650, -1584)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MuelleAlto/WallBottomLeft"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="MuelleAlto/WallBottomLeft"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallBottomRight" type="StaticBody2D" parent="MuelleAlto"]
+position = Vector2(2274, -1584)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MuelleAlto/WallBottomRight"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="MuelleAlto/WallBottomRight"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallTopLeft" type="StaticBody2D" parent="MuelleAlto"]
+position = Vector2(1650, -2320)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MuelleAlto/WallTopLeft"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="MuelleAlto/WallTopLeft"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallTopRight" type="StaticBody2D" parent="MuelleAlto"]
+position = Vector2(2274, -2320)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MuelleAlto/WallTopRight"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="MuelleAlto/WallTopRight"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="MuelleAlto"]
+position = Vector2(1466, -1952)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MuelleAlto/WallLeft"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="MuelleAlto/WallLeft"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="MuelleAlto"]
+position = Vector2(2458, -1952)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="MuelleAlto/WallRight"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="MuelleAlto/WallRight"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="Escalera3" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="Escalera3"]
+offset_left = 1850.0
+offset_top = -2736.0
+offset_right = 2074.0
+offset_bottom = -2336.0
+mouse_filter = 2
+color = Color(0.18, 0.16, 0.2, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="Escalera3"]
+position = Vector2(1834, -2536)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Escalera3/WallLeft"]
+shape = SubResource("Shape_staircase_wall")
+
+[node name="Visual" type="ColorRect" parent="Escalera3/WallLeft"]
+offset_left = -16.0
+offset_top = -200.0
+offset_right = 16.0
+offset_bottom = 200.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="Escalera3"]
+position = Vector2(2090, -2536)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Escalera3/WallRight"]
+shape = SubResource("Shape_staircase_wall")
+
+[node name="Visual" type="ColorRect" parent="Escalera3/WallRight"]
+offset_left = -16.0
+offset_top = -200.0
+offset_right = 16.0
+offset_bottom = 200.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="Terrazas" type="Node2D" parent="."]
+
+[node name="Floor" type="ColorRect" parent="Terrazas"]
+offset_left = 1450.0
+offset_top = -3504.0
+offset_right = 2474.0
+offset_bottom = -2736.0
+mouse_filter = 2
+color = Color(0.16, 0.2, 0.16, 1)
+
+[node name="WallBottomLeft" type="StaticBody2D" parent="Terrazas"]
+position = Vector2(1650, -2752)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Terrazas/WallBottomLeft"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="Terrazas/WallBottomLeft"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallBottomRight" type="StaticBody2D" parent="Terrazas"]
+position = Vector2(2274, -2752)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Terrazas/WallBottomRight"]
+shape = SubResource("Shape_wall_half_400")
+
+[node name="Visual" type="ColorRect" parent="Terrazas/WallBottomRight"]
+offset_left = -200.0
+offset_top = -16.0
+offset_right = 200.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallTop" type="StaticBody2D" parent="Terrazas"]
+position = Vector2(1962, -3488)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Terrazas/WallTop"]
+shape = SubResource("Shape_wall_h_1024")
+
+[node name="Visual" type="ColorRect" parent="Terrazas/WallTop"]
+offset_left = -512.0
+offset_top = -16.0
+offset_right = 512.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="Terrazas"]
+position = Vector2(1466, -3120)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Terrazas/WallLeft"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="Terrazas/WallLeft"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="Terrazas"]
+position = Vector2(2458, -3120)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Terrazas/WallRight"]
+shape = SubResource("Shape_wall_v_768")
+
+[node name="Visual" type="ColorRect" parent="Terrazas/WallRight"]
+offset_left = -16.0
+offset_top = -384.0
+offset_right = 16.0
+offset_bottom = 384.0
+mouse_filter = 2
+color = Color(0.3, 0.28, 0.35, 1)

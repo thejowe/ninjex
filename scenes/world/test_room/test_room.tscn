@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://bqx7h2r5w1n0k"]
+[gd_scene load_steps=9 format=3 uid="uid://bqx7h2r5w1n0k"]
 
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_simple.tscn" id="1_enemy"]
 [ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="2_comprador"]
@@ -11,6 +11,9 @@ size = Vector2(1024, 32)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_vertical"]
 size = Vector2(32, 768)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_vertical_split"]
+size = Vector2(32, 320)
 
 [node name="TestRoom" type="Node2D"]
 
@@ -64,17 +67,31 @@ offset_bottom = 384.0
 mouse_filter = 2
 color = Color(0.35, 0.32, 0.3, 1)
 
-[node name="WallRight" type="StaticBody2D" parent="."]
-position = Vector2(1008, 384)
+[node name="WallRightTop" type="StaticBody2D" parent="."]
+position = Vector2(1008, 160)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
-shape = SubResource("RectangleShape2D_wall_vertical")
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRightTop"]
+shape = SubResource("RectangleShape2D_wall_vertical_split")
 
-[node name="Visual" type="ColorRect" parent="WallRight"]
+[node name="Visual" type="ColorRect" parent="WallRightTop"]
 offset_left = -16.0
-offset_top = -384.0
+offset_top = -160.0
 offset_right = 16.0
-offset_bottom = 384.0
+offset_bottom = 160.0
+mouse_filter = 2
+color = Color(0.35, 0.32, 0.3, 1)
+
+[node name="WallRightBottom" type="StaticBody2D" parent="."]
+position = Vector2(1008, 608)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRightBottom"]
+shape = SubResource("RectangleShape2D_wall_vertical_split")
+
+[node name="Visual" type="ColorRect" parent="WallRightBottom"]
+offset_left = -16.0
+offset_top = -160.0
+offset_right = 16.0
+offset_bottom = 160.0
 mouse_filter = 2
 color = Color(0.35, 0.32, 0.3, 1)
 
