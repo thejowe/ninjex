@@ -9,6 +9,7 @@ extends Node2D
 func _ready() -> void:
 	NetworkManager.players_root = $Players
 	NetworkManager.effects_root = $Effects
+	NetworkManager.cadavers_root = $Cadavers
 	NetworkManager.spawn_points.assign($TestRoom/PlayerSpawns.get_children())
 	var client_ip := _client_ip_from_args()
 	if client_ip != "":

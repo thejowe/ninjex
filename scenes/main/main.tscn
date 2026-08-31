@@ -12,6 +12,8 @@ script = ExtResource("1")
 
 [node name="Effects" type="Node2D" parent="."]
 
+[node name="Cadavers" type="Node2D" parent="."]
+
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
 spawn_path = NodePath("../Players")
 _spawnable_scenes = PackedStringArray("res://scenes/player/player.tscn")

@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://bqx7h2r5w1n0k"]
+[gd_scene load_steps=6 format=3 uid="uid://bqx7h2r5w1n0k"]
 
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_simple.tscn" id="1_enemy"]
+[ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="2_comprador"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1024, 32)
@@ -97,3 +98,13 @@ position = Vector2(400, 200)
 
 [node name="Enemy2" parent="Enemies" instance=ExtResource("1_enemy")]
 position = Vector2(624, 568)
+
+[node name="Compradores" type="Node2D" parent="."]
+
+[node name="Boticario" parent="Compradores" instance=ExtResource("2_comprador")]
+position = Vector2(120, 120)
+tipo = 0
+
+[node name="Carnicero" parent="Compradores" instance=ExtResource("2_comprador")]
+position = Vector2(900, 120)
+tipo = 1

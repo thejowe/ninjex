@@ -70,6 +70,31 @@ var _combo_window_timer: float = 0.0
 ## Vector2 de impacto en vez de una referencia de nodo.
 var grabbed_enemy_path: NodePath = NodePath("")
 
+# --- Cadaveres (H2): cargar cuerpos y venderlos ---------------------------
+## Cuantos cadaveres como maximo se pueden cargar a la vez. Tope simple para
+## que el "peso del botin" tenga un limite claro, no hace falta que sea
+## configurable por Resource todavia (a diferencia de los estilos).
+const MAX_CADAVERES_CARGADOS := 3
+const CADAVER_PICKUP_RANGE := 60.0
+## Los cadaveres cargados se apilan detras del jugador (no delante, para no
+## estorbar la vista de apuntado) -- offset del primero y separacion entre
+## cada uno siguiente, asi se nota a simple vista cuantos llevas.
+const CADAVER_CARRY_OFFSET := 34.0
+const CADAVER_CARRY_SPACING := 18.0
+const CADAVER_DROP_OFFSET := 30.0
+const VENTA_RANGE := 80.0
+## Peso del botin (brief H2 tarea 4): cada cadaver cargado resta velocidad.
+## MIN_CARGA_SPEED_RATIO evita que cargar el maximo te deje casi inmovil --
+## seria un castigo, no una decision interesante.
+const CARGA_SPEED_PENALTY_PER_CADAVER := 0.15
+const MIN_CARGA_SPEED_RATIO := 0.4
+
+## NodePaths absolutos a los cadaveres que este jugador esta cargando ahora
+## mismo. Mismo truco que grabbed_enemy_path: los cadaveres son nodos de red
+## deterministas (mismo nombre en todos los peers, ver Cadaver/EnemigoSimple
+## ._spawn_cadaver), asi que un NodePath resuelve al mismo nodo en cada peer.
+var carried_cadaver_paths: Array[NodePath] = []
+
 # --- Zona (Fuego/Viento) / Lanzamiento (Fisico) ---
 var _zone_charging: bool = false
 var _zone_charge_time: float = 0.0
@@ -168,6 +193,7 @@ func _physics_process(delta: float) -> void:
 			_handle_puertas(delta)
 		_handle_zone_input(delta)
 		_process_grab_hold()
+		_process_carry_hold()
 		if Input.is_action_just_pressed("attack_basic"):
 			_request_basic_attack()
 		if Input.is_action_just_pressed("attack_projectile"):
@@ -179,6 +205,10 @@ func _physics_process(delta: float) -> void:
 			_request_impulse()
 		if Input.is_action_just_pressed("potenciador") and not style_data.melee_only:
 			_request_potenciador()
+		if Input.is_action_just_pressed("cargar_cadaver"):
+			_request_toggle_carry()
+		if Input.is_action_just_pressed("vender_cadaver"):
+			_request_vender()
 	move_and_slide()
 
 func _handle_movement() -> void:
@@ -194,7 +224,7 @@ func _handle_movement() -> void:
 	if input_dir.length() > 0.0:
 		input_dir = input_dir.normalized()
 		_legs.rotation = input_dir.angle()
-	velocity = input_dir * SPEED * _current_speed_multiplier()
+	velocity = input_dir * SPEED * _current_speed_multiplier() * _carga_speed_multiplier()
 
 func _handle_aim() -> void:
 	var to_cursor := get_global_mouse_position() - global_position
@@ -268,6 +298,14 @@ func _current_damage_multiplier() -> float:
 		return 1.0
 	return 1.0 + puertas_nivel * style_data.puertas_damage_multiplier_per_level
 
+## Peso del botin (H2 tarea 4): cuantos mas cadaveres cargues, mas lento
+## vuelves. Lineal con un suelo minimo, no depende del estilo (a diferencia
+## de _current_speed_multiplier, que si es cosa de las Puertas del Fisico).
+func _carga_speed_multiplier() -> float:
+	if carried_cadaver_paths.is_empty():
+		return 1.0
+	return max(MIN_CARGA_SPEED_RATIO, 1.0 - carried_cadaver_paths.size() * CARGA_SPEED_PENALTY_PER_CADAVER)
+
 ## Con las Puertas abiertas, cualquier Potenciador que este jugador reciba
 ## dura el doble. Usado por submit_potenciador() del que lo lanza.
 func potenciador_duration_multiplier() -> float:
@@ -325,6 +363,36 @@ func _get_grabbed_enemy() -> EnemigoSimple:
 	if grabbed_enemy_path == NodePath(""):
 		return null
 	return get_node_or_null(grabbed_enemy_path) as EnemigoSimple
+
+## Cadaver mas cercano dentro de range_max que nadie este cargando ya.
+## Proximidad simple, sin cono: recoger no necesita apuntar, solo estar
+## cerca (a diferencia del Agarre, que si apunta a un enemigo vivo).
+func _find_nearest_free_cadaver(range_max: float) -> Cadaver:
+	var nearest: Cadaver = null
+	var best_dist: float = INF
+	for c in get_tree().get_nodes_in_group(Cadaver.GRUPO_CADAVERES):
+		if not (c is Cadaver) or c.cargado_por_peer_id != 0:
+			continue
+		var dist: float = global_position.distance_to(c.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = c
+	return nearest
+
+## Comprador mas cercano dentro de range_max. Mismo criterio de proximidad
+## simple que _find_nearest_free_cadaver -- los compradores son estaticos,
+## no hace falta cono ni deteccion fisica.
+func _find_nearest_comprador_in_range(range_max: float) -> Comprador:
+	var nearest: Comprador = null
+	var best_dist: float = INF
+	for c in get_tree().get_nodes_in_group(Comprador.GRUPO_COMPRADORES):
+		if not (c is Comprador):
+			continue
+		var dist: float = global_position.distance_to(c.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = c
+	return nearest
 
 func _validate_sender() -> bool:
 	var sender_id := multiplayer.get_remote_sender_id()
@@ -522,6 +590,18 @@ func _process_grab_hold() -> void:
 	if target == null or not is_instance_valid(target):
 		return
 	target.global_position = global_position + Vector2.RIGHT.rotated(_torso.rotation) * style_data.grab_hold_offset
+
+## Mientras se carguen cadaveres, se apilan detras del jugador siguiendo su
+## posicion cada frame -- mismo mecanismo que _process_grab_hold (solo la
+## autoridad del personaje mueve, nunca por RPC), pero en fila para varios a
+## la vez en vez de uno solo delante.
+func _process_carry_hold() -> void:
+	for i in range(carried_cadaver_paths.size()):
+		var cad := get_node_or_null(carried_cadaver_paths[i]) as Cadaver
+		if cad == null or not is_instance_valid(cad):
+			continue
+		var offset: Vector2 = Vector2.LEFT.rotated(_torso.rotation) * (CADAVER_CARRY_OFFSET + i * CADAVER_CARRY_SPACING)
+		cad.global_position = global_position + offset
 
 # =========================================================================
 # Zona (Fuego/Viento) -- mantener Q carga, soltar coloca.
@@ -926,3 +1006,95 @@ func recibir_daño(tipo_daño: String, cantidad: float) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_damage_taken(_tipo_daño: String, cantidad: float) -> void:
 	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador, 0.0)
+
+# =========================================================================
+# Cadaveres (H2) -- recoger/soltar con G, vender con V. Mismo patron
+# submit_/confirm_ que el resto del kit: el cliente pide, el host decide
+# (a que cadaver/comprador te refieres, cuanto vale) y confirma con un RPC
+# call_local que aplica el resultado igual en todos los peers.
+# =========================================================================
+
+func _request_toggle_carry() -> void:
+	submit_toggle_carry.rpc_id(1)
+
+## "Toggle" en el sentido de que una sola tecla sirve para las dos acciones:
+## si hay un cadaver libre cerca y queda hueco, se recoge; si no, se suelta
+## el ultimo que se cogio. Evita necesitar una tecla separada para soltar
+## en un vertical slice que todavia no tiene UI para explicarla.
+@rpc("any_peer", "call_local", "reliable")
+func submit_toggle_carry() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if carried_cadaver_paths.size() < MAX_CADAVERES_CARGADOS:
+		var candidate := _find_nearest_free_cadaver(CADAVER_PICKUP_RANGE)
+		if candidate != null:
+			confirm_pickup_cadaver.rpc(candidate.get_path())
+			return
+	if not carried_cadaver_paths.is_empty():
+		confirm_drop_cadaver.rpc(carried_cadaver_paths[-1])
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_pickup_cadaver(path: NodePath) -> void:
+	var cad := get_node_or_null(path) as Cadaver
+	if cad == null or not is_instance_valid(cad) or cad.cargado_por_peer_id != 0:
+		return # otro jugador se lo llevo entre que el host decidio y esto llega
+	cad.cargado_por_peer_id = get_multiplayer_authority()
+	carried_cadaver_paths.append(path)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_drop_cadaver(path: NodePath) -> void:
+	carried_cadaver_paths.erase(path)
+	var cad := get_node_or_null(path) as Cadaver
+	if cad == null or not is_instance_valid(cad):
+		return
+	cad.cargado_por_peer_id = 0
+	cad.global_position = global_position + Vector2.RIGHT.rotated(_torso.rotation) * CADAVER_DROP_OFFSET
+
+func _request_vender() -> void:
+	submit_vender.rpc_id(1)
+
+## Vende de golpe TODOS los cadaveres que se esten cargando al comprador mas
+## cercano en rango -- mas simple de probar en un vertical slice que vender
+## de uno en uno, y demuestra igual de bien el flujo completo (brief H2
+## tarea 5: matar -> recoger -> volver -> vender).
+@rpc("any_peer", "call_local", "reliable")
+func submit_vender() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if carried_cadaver_paths.is_empty():
+		return
+	var comprador := _find_nearest_comprador_in_range(VENTA_RANGE)
+	if comprador == null:
+		return
+	var total_precio := 0.0
+	var vendidos: Array[NodePath] = []
+	for path in carried_cadaver_paths:
+		var cad := get_node_or_null(path) as Cadaver
+		if cad == null or not is_instance_valid(cad):
+			continue
+		total_precio += comprador.calcular_precio(cad.estado_conservacion, cad.valor_base)
+		vendidos.append(path)
+	if vendidos.is_empty():
+		return
+	var nuevo_total: float = NetworkManager.dinero_manchado + total_precio
+	confirm_vender.rpc(vendidos, nuevo_total, total_precio)
+
+## Aplica la venta igual en todos los peers: borra los cadaveres vendidos,
+## los quita de la lista de carga y actualiza el pool compartido de dinero
+## manchado (NetworkManager.dinero_manchado -- mutarlo aqui directamente
+## vale porque este RPC ya es call_local reliable en si mismo, no hace
+## falta un RPC aparte solo para el dinero).
+@rpc("any_peer", "call_local", "reliable")
+func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float) -> void:
+	for path in vendidos:
+		carried_cadaver_paths.erase(path)
+		var cad := get_node_or_null(path) as Cadaver
+		if cad != null and is_instance_valid(cad):
+			cad.queue_free()
+	NetworkManager.dinero_manchado = nuevo_total
+	# Sin HUD todavia (vertical slice): el print es el feedback de venta.
+	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])

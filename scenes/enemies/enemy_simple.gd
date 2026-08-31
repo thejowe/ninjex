@@ -45,9 +45,21 @@ const GRUPO_ENEMIGOS := "enemigos"
 @export var daño_ataque: float = 8.0
 @export var cooldown_ataque: float = 1.0
 
+@export_group("Economía (H2)")
+## Valor base del cadaver antes de los multiplicadores de tipo de daño y de
+## ponderacion del comprador (ver economia_cadaveres.gd / comprador.gd). Un
+## numero simple por enemigo -- no hace falta un Resource aparte todavia,
+## a diferencia de los estilos, que si necesitan iterarse en playtest.
+@export var valor_cadaver_base: float = 20.0
+
 var vida_actual: float
 var estado: Estado = Estado.PATRULLA
 var objetivo_jugador: Node2D = null
+## Tipo de daño del ULTIMO golpe recibido antes de morir. El cadaver usa
+## este valor, no el daño acumulado durante el combate (ver recibir_daño()):
+## un golpe final de fuego carboniza el cuerpo aunque el resto de la pelea
+## haya sido con cortes limpios.
+var _ultimo_tipo_dano: String = "contundente"
 
 ## Jugador (Fisico) que tiene a este enemigo agarrado. Mientras no sea null,
 ## la IA se congela por completo y la posicion la controla quien agarra
@@ -203,20 +215,56 @@ func recibir_daño(tipo_daño: String, cantidad: float) -> void:
 		return
 
 	vida_actual -= cantidad
+	# H2: se trackea el tipo del golpe que acaba de llegar en CADA llamada
+	# (no solo la que mata) para que, cuando toque morir un par de lineas
+	# mas abajo, este siempre sea el tipo del golpe final real.
+	_ultimo_tipo_dano = tipo_daño
 	daño_recibido.emit(cantidad, vida_actual)
 
 	if vida_actual <= 0.0:
-		morir.rpc()
+		# El id lo genera el host UNA vez aqui y viaja como argumento del RPC
+		# -- asi todos los peers instancian el cadaver con el mismo nombre de
+		# nodo (ver _spawn_cadaver), en vez de que cada uno intente generar
+		# su propio id y se desincronicen.
+		morir.rpc(NetworkManager.next_cadaver_id(), _ultimo_tipo_dano)
 
 
 ## Solo el host decide morir (llamado desde recibir_daño), pero el RPC se
 ## retransmite a todos los peers para que queue_free() borre el enemigo en
 ## todos por igual -- si no, los clientes se quedan con un cadaver fantasma
 ## que ya no recibe posicion/vida nuevas del synchronizer.
+## H2: ademas de borrar al enemigo, deja un Cadaver en su lugar -- ver
+## _spawn_cadaver(). Se hace aqui (dentro del mismo RPC call_local) en vez
+## de en un RPC aparte porque morir() ya corre identico en todos los peers;
+## no hace falta coordinacion extra para que el spawn tambien lo haga.
 @rpc("any_peer", "call_local", "reliable")
-func morir() -> void:
+func morir(cadaver_id: int, tipo_dano_final: String) -> void:
 	murio.emit(self)
+	_spawn_cadaver(cadaver_id, tipo_dano_final)
 	queue_free()
+
+
+## Instancia el Cadaver igual en todos los peers. No hay MultiplayerSpawner
+## para esto (los cadaveres nacen en posiciones variables, no se pueden
+## pre-registrar como el jugador) -- en vez de eso se aprovecha que morir()
+## ya es un RPC call_local reliable: basta con que el nombre del nodo
+## (via cadaver_id) coincida en todos los peers para que sea direccionable
+## despues por NodePath, igual que ya hace el Agarre del Fisico con los
+## propios enemigos (ver grabbed_enemy_path en player.gd).
+func _spawn_cadaver(cadaver_id: int, tipo_dano_final: String) -> void:
+	var root: Node = NetworkManager.cadavers_root
+	if root == null:
+		push_warning("EnemigoSimple: cadavers_root no asignado, no se puede spawnear el cadaver")
+		return
+	var scene: PackedScene = preload("res://scenes/cadavers/cadaver.tscn")
+	var cadaver: Cadaver = scene.instantiate()
+	# Configurar ANTES de add_child: Cadaver._ready() lee estado_conservacion
+	# para elegir el color de debug nada mas entrar en el arbol.
+	cadaver.estado_conservacion = tipo_dano_final
+	cadaver.valor_base = valor_cadaver_base
+	cadaver.name = "cadaver_%d" % cadaver_id
+	root.add_child(cadaver)
+	cadaver.global_position = global_position
 
 
 ## Lanzamiento del Fisico (ranura Zona sustituida): lo llama confirm_throw()

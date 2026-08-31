@@ -12,11 +12,33 @@ const MAX_PLAYERS := 4 # tope de diseno del juego completo (2-4 jugadores)
 ## Asignados por main.gd en _ready() antes de llamar a host_game().
 var players_root: Node = null
 var effects_root: Node = null
+## Raiz donde EnemigoSimple instancia los cadaveres al morir (H2). Ver
+## EnemigoSimple._spawn_cadaver().
+var cadavers_root: Node = null
 ## Puntos de spawn de jugadores del mapa actual (Marker2D). Si esta vacio,
 ## los jugadores caen en (0,0) -- eso es lo que pasaba antes de fijar esto:
 ## (0,0) es la esquina de la sala de pruebas, la camara se centraba ahi y
 ## la mayor parte de la pantalla quedaba fuera de la sala (se veia vacio).
 var spawn_points: Array[Node2D] = []
+
+## Dinero "manchado" (H2): pool compartido entre todos los jugadores desde
+## ya -- la votacion de boveda es H4, no esta implementada, pero no pasa
+## nada por que el pool ya sea unico ahora mismo. Solo lo muta el host,
+## siempre desde dentro de un RPC call_local (player.gd confirm_vender),
+## asi que el valor llega igual a todos los peers sin necesitar su propio
+## RPC de replicacion.
+var dinero_manchado: float = 0.0
+
+## Contador de ids de cadaver, solo lo incrementa el host (siempre desde
+## EnemigoSimple.recibir_daño(), que ya esta filtrado por
+## is_multiplayer_authority()). El id resultante viaja como argumento del
+## RPC morir() para que todos los peers instancien el cadaver con el mismo
+## nombre de nodo -- sin esto no seria direccionable por NodePath despues.
+var _next_cadaver_id: int = 1
+
+func next_cadaver_id() -> int:
+	_next_cadaver_id += 1
+	return _next_cadaver_id - 1
 
 func host_game() -> void:
 	# multiplayer.multiplayer_peer NUNCA es null por defecto: Godot le pone un
