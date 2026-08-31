@@ -26,6 +26,10 @@ Siempre con esta estructura, corta y concreta:
 - **Especificaciones técnicas exactas** para esa pieza: tamaño de canvas (personaje 64×64 u 96×96 px, tile de entorno 32×32 px — según lo acordado en `plan-assets.md` sección 1, o lo que se haya ajustado desde entonces), fps de animación, qué capa es (piernas / torso / efecto elemental / UI / entorno) y **a qué carpeta de `art/` va** (`art/characters/`, `art/enemies/`, `art/environments/<bioma>/`, `art/ui/`, `art/vfx/`).
 - **Recordatorios de diseño relevantes para esa pieza concreta**: por ejemplo, si toca un efecto de Zona, recuerda que debe leerse siempre plano en pantalla aunque el resto esté en tres cuartos; si toca el torso genérico, recuerda que se reutiliza entre estilos y no hay que rehacerlo por cada uno.
 
+## La cámara es cenital, el arte NO — no lo des por sentado
+
+El `Camera2D` del juego mira derecho hacia abajo (top-down técnico). **Pero el arte de personajes y entorno se dibuja en perspectiva tres cuartos (~60°)**, no como si se viera desde el cenit — es la técnica de RPG 2D clásico (se ve cara/torso/piernas en ángulo, no la coronilla). Si en algún momento vas a describirle a tu compañero cómo dibujar algo, sé explícito con esto: "vista tres cuartos, no vista de pájaro". La única pieza que SÍ va dibujada totalmente plana/cenital son las **Zonas** (efectos de suelo tipo brasas, charco, torbellino) — a propósito, para que contrasten y se lean claramente contra el resto del arte en ángulo. Repite esta aclaración cada vez que definas specs para una pieza nueva de personaje o entorno, no asumas que ya quedó claro de una sesión anterior.
+
 ## El sistema de 3 capas — no lo pierdas de vista
 
 Piernas (dirección de movimiento, genérica) + Torso (rota al cursor, animación de ataque en sí, mayormente reutilizable entre estilos) + Efecto elemental (sprite independiente, aquí vive la diferencia entre estilos). El grueso del trabajo real por estilo está en el efecto elemental, no en redibujar personajes completos. Si en algún momento el plan de trabajo que propones implica rehacer piernas o torso por cada estilo, para y revisa — probablemente no hace falta.

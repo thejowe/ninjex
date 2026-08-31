@@ -26,9 +26,11 @@ Por eso este documento marca cada bloque como 🟡 *placeholder ya* o 🟢 *fina
 
 ## 1. Especificaciones técnicas propuestas (a confirmar con el desarrollador antes de producir en serio)
 
+> **Aclaración importante sobre la cámara, porque genera confusión fácil:** la cámara del juego (`Camera2D` en Godot) es técnicamente **cenital** — mira derecho hacia abajo sobre un plano 2D, como cualquier juego top-down. **Pero el arte NO se dibuja como si se viera desde arriba.** Se dibuja en **perspectiva tres cuartos (~60°)**: el personaje se ilustra mostrando cara/torso/piernas en ángulo, como en un RPG 2D clásico (Zelda 16-bit, Stardew Valley, etc.), no la coronilla desde el cenit. Es la técnica estándar para que los personajes se reconozcan y tengan lectura de armas/gestos. La única excepción son las **Zonas** (efectos de suelo): esas sí van dibujadas totalmente planas/cenitales, precisamente para contrastar con el resto del arte que está en ángulo — si no, el jugador no sabe dónde acaba el efecto.
+
 | Parámetro | Propuesta | Notas |
 |---|---|---|
-| Estilo | Pixel art, cámara tres cuartos (~60°) | Coherente en todo el juego, luz de tarde/noche predominante |
+| Estilo | Pixel art, personajes/entorno en perspectiva tres cuartos (~60°); Zonas de suelo en plano cenital | Coherente en todo el juego, luz de tarde/noche predominante |
 | Tamaño de tile de entorno | 32×32 px (ajustable) | Confirmar con quien monte los tilesets en Godot |
 | Canvas de personaje por capa | 64×64 o 96×96 px | Debe dejar margen para que armas/efectos sobresalgan del cuerpo |
 | Animación | 8–12 fps | Estándar de pixel art, no busca fluidez tipo anime |
