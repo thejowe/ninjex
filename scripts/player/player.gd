@@ -143,6 +143,11 @@ const CASINO_RANGE := 80.0
 ## deteccion por distancia simple, solo con otro nombre para dejar claro que
 ## es la tanda del Hub y no la del casino.
 const HUB_RANGE := 80.0
+## Rango de interaccion con las sillas de la Taberna (H6 extra): mas
+## ajustado que HUB_RANGE a proposito -- sentarse es una pose puntual junto
+## a una silla concreta, no "en cualquier parte de la Taberna" (eso es el
+## emote general, que si usa HUB_RANGE).
+const SILLA_RANGE := 40.0
 ## Grupo compartido por TODAS las escenas de mision (H6) para marcar al jefe
 ## de zona -- ver mision_*.tscn. Central aqui (no en NetworkManager) porque
 ## solo lo consulta la comprobacion de extraccion de _update_interaction_hint
@@ -535,6 +540,10 @@ func _physics_process(delta: float) -> void:
 			_request_taberna_ver_records()
 		if Input.is_action_just_pressed("taberna_comprar_cancion"):
 			_request_taberna_musica()
+		if Input.is_action_just_pressed("taberna_sentarse"):
+			_request_taberna_sentarse()
+		if Input.is_action_just_pressed("taberna_emote"):
+			_request_taberna_emote()
 		if Input.is_action_just_pressed("sastreria_siguiente_tinte"):
 			_request_sastreria_tinte()
 		if Input.is_action_just_pressed("casa_comprar_cocina"):
@@ -662,8 +671,10 @@ func _update_interaction_hint() -> void:
 		texto = "Pulsa Y para mejorar la forja"
 	elif _find_nearest_herboristeria_in_range(HUB_RANGE) != null:
 		texto = "P pildora, H unguento, J bomba de humo, L sales -- I para usar"
+	elif _find_nearest_silla_taberna_in_range(SILLA_RANGE) != null:
+		texto = "Pulsa ` para sentarte"
 	elif _find_nearest_taberna_in_range(HUB_RANGE) != null:
-		texto = "Pulsa X para el brindis, \\ para la pizarra de records, ' para comprar/cambiar musica"
+		texto = "Pulsa X para el brindis, \\ para la pizarra de records, ' para comprar/cambiar musica, Flecha derecha para un gesto"
 	elif _find_nearest_sastreria_in_range(HUB_RANGE) != null:
 		texto = "Pulsa R para cambiar tu tinte"
 	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
@@ -1019,6 +1030,20 @@ func _find_nearest_taberna_in_range(range_max: float) -> Taberna:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = t
+	return nearest
+
+## Silla de la Taberna mas cercana dentro de range_max (H6 extra). Misma
+## proximidad simple que el resto de puntos.
+func _find_nearest_silla_taberna_in_range(range_max: float) -> SillaTaberna:
+	var nearest: SillaTaberna = null
+	var best_dist: float = INF
+	for s in get_tree().get_nodes_in_group(SillaTaberna.GRUPO_SILLAS_TABERNA):
+		if not (s is SillaTaberna):
+			continue
+		var dist: float = global_position.distance_to(s.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = s
 	return nearest
 
 ## Sastreria mas cercana dentro de range_max. Misma proximidad simple.
@@ -2782,6 +2807,49 @@ func submit_taberna_musica() -> void:
 	var siguiente: String = taberna.canciones_disponibles[(indice_actual + 1) % taberna.canciones_disponibles.size()]
 	NetworkManager.confirm_taberna_musica.rpc(NetworkManager.dinero_limpio, siguiente, false)
 	confirm_casino_mensaje.rpc("Ahora suena en la Taberna: '%s'" % siguiente)
+
+## Sillas y emote (H6 extra): puramente cosmetico, sin impacto economico ni
+## de combate -- por eso NO sigue el patron submit_/confirm_ mediado por el
+## host del resto del kit (nada que validar, ni fondos que proteger de un
+## cliente mentiroso). Broadcast directo call_local en vez: quien pulsa la
+## tecla dispara el RPC en su propio nodo y todos los peers ven la misma
+## pose (mismo NodePath -- ver confirm_release_grab.rpc() para el mismo
+## patron de broadcast directo sin pasar por el host). Sin estado
+## persistente en NetworkManager (pedido explicito de la tarea):
+## _sentado_taberna es una var local de ESTE nodo, se pierde si el jugador
+## se desconecta/reconecta, no se guarda en ningun sitio.
+var _sentado_taberna: bool = false
+
+func _request_taberna_sentarse() -> void:
+	if _find_nearest_silla_taberna_in_range(SILLA_RANGE) == null:
+		return
+	rpc_taberna_toggle_sentado.rpc()
+
+## Pose simple sin arte (mismo criterio placeholder que el resto del
+## vertical slice, ver CLAUDE.md "no producir arte final antes de cerrar
+## H1"): encoge el sprite en vertical mientras esta sentado, recupera su
+## tamaño normal al levantarse. Toggle: pulsar de nuevo junto a una silla
+## se levanta.
+@rpc("any_peer", "call_local", "reliable")
+func rpc_taberna_toggle_sentado() -> void:
+	_sentado_taberna = not _sentado_taberna
+	var target_scale := Vector2(1.0, 0.7) if _sentado_taberna else Vector2(1.0, 1.0)
+	var tween := create_tween()
+	tween.tween_property(_visuals, "scale", target_scale, 0.15)
+
+func _request_taberna_emote() -> void:
+	if _find_nearest_taberna_in_range(HUB_RANGE) == null:
+		return
+	rpc_taberna_emote.rpc()
+
+## Gesto generico momentaneo (no toggle, a diferencia de sentarse): un
+## bamboleo simple de rotacion, mismo criterio de pose placeholder de arriba.
+@rpc("any_peer", "call_local", "reliable")
+func rpc_taberna_emote() -> void:
+	var tween := create_tween()
+	tween.tween_property(_visuals, "rotation", 0.3, 0.1)
+	tween.tween_property(_visuals, "rotation", -0.3, 0.2)
+	tween.tween_property(_visuals, "rotation", 0.0, 0.1)
 
 # =========================================================================
 # Sastreria (H5 cierre, Calle de los Faroles) -- tecla R. Cosmetico puro, sin
