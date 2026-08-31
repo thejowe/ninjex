@@ -45,9 +45,9 @@ Agua, Rayo, Tierra completos con sus 5 estilos cada uno, 4 combinaciones de suel
 
 ---
 
-## 2. Qué queda por hacer de verdad
+## 2. Qué queda por hacer de verdad (código)
 
-Esto es lo único que un agente de código debería tocar ahora, en este orden (cada bloque no depende estrictamente de los demás salvo que se diga lo contrario):
+Esto es lo único que un agente de código debería tocar ahora, en este orden (cada bloque no depende estrictamente de los demás salvo que se diga lo contrario). **Esta lista vive también en el `TaskList` que gestiona `pilar-agent` — es la única fuente de tareas de código, no incluye ni debe incluir nada de assets.**
 
 1. **Playtest de validación de H4/H5 con gente real.** El brief pedía validar la bóveda con 4 personas discutiendo — como se recortó la votación, esto ya no aplica tal cual, pero conviene una sesión de juego real de varias personas para confirmar que el recorte se siente bien y no falta nada crítico antes de seguir construyendo encima.
 2. **Sellos y pergaminos** (H6): secuencia de 3 direcciones manteniendo R, técnicas ocultas, tienda de pergaminos comprables con fichas.
@@ -56,9 +56,10 @@ Esto es lo único que un agente de código debería tocar ahora, en este orden (
 5. **Falsificador, clan rival y prisioneros vivos** (H6): requiere biomas/misiones que generen los objetos que piden.
 6. **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — duración 12-18 min, tres áreas encadenadas, vuelta a extracción.
 7. **Prólogo, elección de estilo, historia y diálogos de NPCs** (H6, al final).
-8. **Arte final** en paralelo desde ya (ver `plan-assets.md` y `assets-progreso.md`) — el combate lleva jugándose un tiempo con `ColorRect`, así que gran parte de H1-H5 ya puede pasar a arte final sin miedo a que el diseño cambie debajo.
 
 No se retoma la bóveda con votación, Mesa Alta, sastrería, casa del equipo, música/emotes/pizarra salvo que el usuario lo pida explícitamente — están descartadas del alcance actual, no en una cola de "pendiente".
+
+**Sobre el arte:** deliberadamente no está en esta lista ni en el `TaskList` de código. El trabajo de assets tiene su propio plan (`plan-assets.md`) y su propio checklist de progreso (`assets-progreso.md`), gestionados por `arte-pilar-agent` — un sistema de seguimiento completamente aparte, sin acceso al `TaskList` de código, para que ninguno de los dos equipos bloquee al otro. La única conexión es que `arte-pilar-agent` lee (nunca edita) la sección 1 de este documento para saber qué hitos de código ya están validados.
 
 ---
 
