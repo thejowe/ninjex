@@ -37,6 +37,20 @@ const GRUPO_TABERNAS := "tabernas"
 @export var brindis_duracion: float = 180.0
 @export var brindis_bonus_daño: float = 0.15
 
+## Musica diegetica (H6 extra): lista FIJA comprable en cualquier orden --
+## recorte deliberado de "se desbloquean segun avanzas" (brief), porque el
+## vertical slice todavia no tiene progresion de mision real dentro de una
+## misma partida. Cada cancion es una compra UNICA y
+## PERMANENTE de GRUPO (no por jugador -- suena igual para todos, mismo
+## criterio que casa_equipo_almacen_comprado), pagada del pool compartido de
+## dinero limpio igual que el brindis.
+@export var canciones_disponibles: PackedStringArray = [
+	"Balada del Muelle",
+	"Vals del Contrabandista",
+	"Tambor de Ronda",
+]
+@export var costo_cancion: float = 40.0
+
 @onready var _visual: ColorRect = $Visual
 
 func _ready() -> void:

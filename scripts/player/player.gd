@@ -533,6 +533,8 @@ func _physics_process(delta: float) -> void:
 			_request_brindis()
 		if Input.is_action_just_pressed("taberna_ver_records"):
 			_request_taberna_ver_records()
+		if Input.is_action_just_pressed("taberna_comprar_cancion"):
+			_request_taberna_musica()
 		if Input.is_action_just_pressed("sastreria_siguiente_tinte"):
 			_request_sastreria_tinte()
 		if Input.is_action_just_pressed("casa_comprar_cocina"):
@@ -661,7 +663,7 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_herboristeria_in_range(HUB_RANGE) != null:
 		texto = "P pildora, H unguento, J bomba de humo, L sales -- I para usar"
 	elif _find_nearest_taberna_in_range(HUB_RANGE) != null:
-		texto = "Pulsa X para el brindis, \\ para leer la pizarra de records"
+		texto = "Pulsa X para el brindis, \\ para la pizarra de records, ' para comprar/cambiar musica"
 	elif _find_nearest_sastreria_in_range(HUB_RANGE) != null:
 		texto = "Pulsa R para cambiar tu tinte"
 	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
@@ -2745,6 +2747,41 @@ func _texto_lider_record(record: Dictionary) -> String:
 			lider_valor = valor
 			lider_id = peer_id
 	return "jugador %d (%d)" % [lider_id, lider_valor]
+
+func _request_taberna_musica() -> void:
+	submit_taberna_musica.rpc_id(1)
+
+## Una sola tecla, una sola accion obvia (mismo criterio que
+## submit_sastreria_tinte/submit_comprar_pergamino): si queda alguna
+## cancion de taberna.canciones_disponibles sin comprar, compra la primera
+## que encuentre (lista fija, cualquier orden sirve, ver comentario de
+## cabecera de taberna.gd) y la deja sonando. Si ya estan todas compradas,
+## cicla a la siguiente de la lista (con vuelta al principio) sin coste.
+@rpc("any_peer", "call_local", "reliable")
+func submit_taberna_musica() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var taberna := _find_nearest_taberna_in_range(HUB_RANGE)
+	if taberna == null:
+		confirm_casino_mensaje.rpc("No hay ninguna taberna cerca")
+		return
+	for cancion in taberna.canciones_disponibles:
+		if not NetworkManager.taberna_canciones_compradas.get(cancion, false):
+			if NetworkManager.dinero_limpio < taberna.costo_cancion:
+				confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para comprar '%s'" % [taberna.costo_cancion, cancion])
+				return
+			var nuevo_limpio: float = NetworkManager.dinero_limpio - taberna.costo_cancion
+			NetworkManager.confirm_taberna_musica.rpc(nuevo_limpio, cancion, true)
+			confirm_casino_mensaje.rpc("Cancion comprada para la Taberna: '%s' (sonando ahora)" % cancion)
+			return
+	if taberna.canciones_disponibles.is_empty():
+		return
+	var indice_actual: int = taberna.canciones_disponibles.find(NetworkManager.taberna_cancion_actual)
+	var siguiente: String = taberna.canciones_disponibles[(indice_actual + 1) % taberna.canciones_disponibles.size()]
+	NetworkManager.confirm_taberna_musica.rpc(NetworkManager.dinero_limpio, siguiente, false)
+	confirm_casino_mensaje.rpc("Ahora suena en la Taberna: '%s'" % siguiente)
 
 # =========================================================================
 # Sastreria (H5 cierre, Calle de los Faroles) -- tecla R. Cosmetico puro, sin

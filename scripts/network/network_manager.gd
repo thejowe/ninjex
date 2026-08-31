@@ -249,6 +249,19 @@ var record_casino_perdidas: Dictionary = {}
 ## Solo lo muta player.gd confirm_vender.
 var record_cuerpos_destrozados: Dictionary = {}
 
+## Musica diegetica de la Taberna (H6 extra, ver comentario de cabecera de
+## taberna.gd) -- lista FIJA comprable en cualquier orden, compra UNICA y
+## PERMANENTE de GRUPO (no por jugador, mismo criterio que
+## casa_equipo_almacen_comprado): song name -> bool. Sin entrada == no
+## comprada. Solo lo muta el host, siempre desde confirm_taberna_musica.
+var taberna_canciones_compradas: Dictionary = {}
+## Cancion sonando ahora mismo, o "" si no suena ninguna. Solo puede ser una
+## ya comprada (ver taberna_canciones_compradas de arriba) -- puramente de
+## sabor, no hay reproduccion de audio real todavia (sin arte/assets antes
+## de cerrar H1, ver CLAUDE.md), asi que esto es el "que cancion esta
+## activa" que se muestra en el HUD/mensajes, no un AudioStreamPlayer.
+var taberna_cancion_actual: String = ""
+
 ## Cocina de la Casa del equipo (H5 cierre, Terrazas): mismo patron que
 ## brindis_time_remaining/brindis_damage_multiplier de arriba -- buff de
 ## GRUPO temporal, activo para TODOS los jugadores conectados, decae
@@ -318,6 +331,19 @@ func confirm_taberna_fiar(duracion: float, multiplicador: float, nueva_deuda: fl
 	brindis_time_remaining = duracion
 	brindis_damage_multiplier = multiplicador
 	taberna_deuda_pendiente = nueva_deuda
+
+## Confirma la musica de la Taberna igual en todos los peers -- una sola
+## tecla, una sola accion obvia (mismo criterio que sastreria_tinte/
+## comprar_pergamino): si `comprada` es true, esta es una compra nueva
+## (nuevo_limpio ya viene descontado); si es false, solo se esta ciclando a
+## una cancion ya comprada (nuevo_limpio llega sin cambios). Ver
+## player.gd submit_taberna_musica.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_taberna_musica(nuevo_limpio: float, cancion: String, comprada: bool) -> void:
+	dinero_limpio = nuevo_limpio
+	if comprada:
+		taberna_canciones_compradas[cancion] = true
+	taberna_cancion_actual = cancion
 
 ## Confirma la Cocina de la Casa del equipo igual en todos los peers. Vive
 ## aqui por el mismo motivo que confirm_brindis de arriba: afecta a TODOS
