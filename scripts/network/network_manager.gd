@@ -74,6 +74,56 @@ func next_cadaver_id() -> int:
 ## calcula daño real.
 var forja_nivel: Dictionary = {}
 
+## Medidor de sospecha (H6 casino, brief 2.3 / diseno "El casino") -- POR
+## JUGADOR, no compartido como los pools de dinero: "te vigilan a ti", no al
+## grupo. Mismo patron que forja_nivel de arriba: Dictionary peer_id ->
+## nivel (0-100), sin entrada == 0 (nadie mira). Solo lo mutan los confirm_*
+## de player.gd que resuelven una trampa (ver submit_apostar_dados /
+## submit_jugar_cartas), siempre con el valor ya calculado por el host,
+## mismo criterio que el resto del estado compartido de este autoload.
+var sospecha_nivel: Dictionary = {}
+const SOSPECHA_MAX := 100.0
+## Tramo AMBAR (brief: "un vigilante te sigue, las trampas cuestan el doble
+## de chakra" -- ver el *2.0 en los costes de trampa de player.gd).
+const SOSPECHA_AMBAR_UMBRAL := 40.0
+## Tramo ROJO (brief: "expulsion tres dias de juego, sin cambista ni
+## pergaminos"). Al cruzar este umbral se dispara la expulsion de abajo y el
+## nivel se resetea a 0 -- el castigo ya se ha "cobrado", no hace falta
+## seguir acumulando encima mientras se cumple la expulsion.
+const SOSPECHA_ROJO_UMBRAL := 100.0
+## Baja lentamente con el tiempo jugando limpio (brief) -- decae en
+## _process de este autoload igual que brindis_time_remaining de abajo: no
+## hace falta que el segundo exacto coincida entre peers (mismo motivo que
+## el comentario de brindis_time_remaining), la autoridad real es el valor
+## que lee el HOST dentro de cada submit_ que valida una trampa.
+const SOSPECHA_DECAY_POR_SEGUNDO := 1.5
+
+## Segundos restantes de expulsion (tramo rojo) por peer_id -- 0/sin entrada
+## = no expulsado. Mientras > 0, player.gd submit_cambiar_dinero rechaza la
+## peticion (brief: "sin cambista"; los pergaminos no existen todavia, ver
+## alcance de la tarea, asi que no hay nada mas que bloquear).
+var sospecha_expulsado_restante: Dictionary = {}
+## Adaptacion de "expulsion tres dias de juego" (brief 2.3): el vertical
+## slice no tiene el concepto de "dia de juego" todavia -- misma situacion
+## que resolvio usurero.gd adaptando "5 misiones" a un importe real (ver su
+## comentario de cabecera), aqui se adapta a un temporizador de sesion real,
+## reutilizando el mismo mecanismo que ya existe para el brindis de Taberna
+## (brindis_time_remaining), solo que penaliza en vez de bufar. 1 "dia" = 60s
+## de sesion real; revisar esta adaptacion si el juego llega a tener un
+## ciclo dia/noche real.
+const SOSPECHA_SEGUNDOS_POR_DIA := 60.0
+const SOSPECHA_DIAS_EXPULSION := 3.0
+
+## Tramo actual de sospecha de un jugador ("verde"/"ambar"/"rojo"). Lo
+## consulta player.gd tanto para decidir si duplicar el coste de chakra de
+## una trampa (ambar) como para bloquear el cambista (rojo).
+func sospecha_tramo(peer_id: int) -> String:
+	if sospecha_expulsado_restante.get(peer_id, 0.0) > 0.0:
+		return "rojo"
+	if sospecha_nivel.get(peer_id, 0.0) >= SOSPECHA_AMBAR_UMBRAL:
+		return "ambar"
+	return "verde"
+
 ## Brindis de la Taberna (H5 tarea 4): buff de GRUPO temporal, activo para
 ## TODOS los jugadores conectados mientras dure -- Player._current_damage_multiplier()
 ## multiplica por brindis_damage_multiplier sin importar quien pago la ronda
@@ -93,6 +143,18 @@ func _process(delta: float) -> void:
 		if brindis_time_remaining <= 0.0:
 			brindis_time_remaining = 0.0
 			brindis_damage_multiplier = 1.0
+	# Decae la sospecha de cada jugador -- mismo criterio de "no hace falta
+	# que coincida al frame exacto entre peers" que el brindis de arriba.
+	for peer_id in sospecha_expulsado_restante.keys():
+		var restante: float = sospecha_expulsado_restante[peer_id]
+		if restante > 0.0:
+			sospecha_expulsado_restante[peer_id] = max(0.0, restante - delta)
+	for peer_id in sospecha_nivel.keys():
+		if sospecha_expulsado_restante.get(peer_id, 0.0) > 0.0:
+			continue # en tramo rojo el nivel ya esta a 0, nada que decaer
+		var nivel: float = sospecha_nivel[peer_id]
+		if nivel > 0.0:
+			sospecha_nivel[peer_id] = max(0.0, nivel - SOSPECHA_DECAY_POR_SEGUNDO * delta)
 
 ## Confirma el brindis igual en todos los peers: descuenta el coste del pool
 ## compartido de dinero limpio y activa el buff de grupo. Vive aqui (en el
