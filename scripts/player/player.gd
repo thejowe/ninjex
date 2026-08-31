@@ -50,6 +50,13 @@ const GRUPO_ENEMIGOS := "enemigos"
 ## salia por print(), indistinguible en pantalla de que la tecla no hiciera
 ## nada. Ver confirm_casino_mensaje().
 @onready var _status_label: Label = $HUD/StatusLabel
+## Aviso de "que tecla pulsar" cuando estas cerca de un punto de interaccion
+## (Comprador/Cambista/MesaDados/Usurero/Forja/Herboristeria/Taberna) --
+## antes no habia forma de saber que tecla usaba cada cuadrado sin mirar el
+## codigo. Se recalcula cada frame en _update_interaction_hint(), separado
+## de _status_label (que es para resultados/avisos puntuales, no un aviso
+## persistente mientras estas de pie al lado de algo).
+@onready var _interaction_label: Label = $HUD/InteractionLabel
 
 # Colores base de TorsoRect/LegsRect. Antes eran los mismos const fijos que
 # trae player.tscn (siempre verde/azul, sin importar el estilo); ahora son
@@ -394,6 +401,7 @@ func _physics_process(delta: float) -> void:
 		_handle_movement()
 		_handle_aim()
 		_update_money_label()
+		_update_interaction_hint()
 		if style_data.melee_only:
 			_handle_puertas(delta)
 		_handle_zone_input(delta)
@@ -484,6 +492,33 @@ func _update_money_label() -> void:
 	if NetworkManager.usurero_deuda_transacciones_restantes > 0:
 		texto += "  |  Deuda Usurero: %d" % NetworkManager.usurero_deuda_transacciones_restantes
 	_money_label.text = texto
+
+## Que tecla pulsar en el punto de interaccion mas cercano, o "" si no hay
+## ninguno en rango. Comprueba cada tipo con su propio _find_nearest_*_in_range
+## ya existente (mismo radio que usa el submit_ real de cada uno, para que
+## el aviso aparezca exactamente cuando la accion de verdad funcionaria) --
+## se para en el primero que encuentre, de mas a menos "de paso" segun el
+## orden en que sueles cruzarte con ellos (cadaver suelto primero, luego los
+## puntos estaticos).
+func _update_interaction_hint() -> void:
+	var texto := ""
+	if _find_nearest_free_cadaver(CADAVER_PICKUP_RANGE) != null:
+		texto = "Pulsa G para recoger el cadaver"
+	elif _find_nearest_comprador_in_range(VENTA_RANGE) != null:
+		texto = "Pulsa V para vender" if not carried_cadaver_paths.is_empty() else "Pulsa V para vender (no llevas ningun cadaver)"
+	elif _find_nearest_cambista_in_range(CASINO_RANGE) != null:
+		texto = "Pulsa C para cambiar dinero manchado a limpio"
+	elif _find_nearest_mesa_dados_in_range(CASINO_RANGE) != null:
+		texto = "Pulsa T para apostar alto, B para apostar bajo (M para cambiar de moneda)"
+	elif _find_nearest_usurero_in_range(CASINO_RANGE) != null:
+		texto = "Pulsa U para pedir un prestamo"
+	elif _find_nearest_forja_in_range(HUB_RANGE) != null:
+		texto = "Pulsa Y para mejorar la forja"
+	elif _find_nearest_herboristeria_in_range(HUB_RANGE) != null:
+		texto = "P pildora, H unguento, J bomba de humo, L sales -- I para usar"
+	elif _find_nearest_taberna_in_range(HUB_RANGE) != null:
+		texto = "Pulsa X para el brindis"
+	_interaction_label.text = texto
 
 func _handle_combo_timer(delta: float) -> void:
 	if combo_count > 0:
