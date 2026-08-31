@@ -216,7 +216,8 @@ Para que el trabajo en cada sistema no se pise ni pierda las reglas invariantes 
 
 | Agente | Dominio | Se usa desde |
 |---|---|---|
-| `pilar-agent` | **Director de proyecto.** Contexto completo (diseño + plan + progreso real). Dice qué toca ahora y qué agente lanzar. No implementa nada. | **Siempre el primero, al empezar cada sesión** |
+| `pilar-agent` | **Director de proyecto (código).** Contexto completo (diseño + plan + progreso real). Dice qué toca ahora y qué agente lanzar. No implementa nada. | **Siempre el primero, al empezar cada sesión de código** |
+| `arte-pilar-agent` | **Director de la parte visual.** Contexto de `plan-assets.md` + `assets-progreso.md` + progreso de código, para saber si toca placeholder o arte final. Dice qué pieza tocar, con qué herramienta (Claude/PixelLab) y con qué specs. No genera arte él mismo. | **Siempre el primero, en la sesión de la persona de assets** |
 | `combat-agent` | Movimiento, apuntado, las 5 ranuras por estilo, chakra, combinaciones, hitboxes | H1 |
 | `netcode-agent` | Arquitectura multijugador host-autoritativo, validación de combos con latencia | H1 (paso 12) en adelante |
 | `economy-agent` | Cadáveres, estado de conservación, compradores, peso, prisioneros vivos | H2 |

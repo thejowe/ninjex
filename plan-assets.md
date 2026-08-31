@@ -18,7 +18,7 @@ Esto **no significa parar hasta H1**. Significa dos velocidades distintas:
 
 Por eso este documento marca cada bloque como 🟡 *placeholder ya* o 🟢 *final cuando el hito de código correspondiente esté cerrado*.
 
-**Coordinación:** al empezar cada sesión de arte, conviene preguntar a `pilar-agent` (o directamente mirar el todolist) en qué hito de código está el proyecto ahora mismo, para saber si toca placeholder o ya se puede pulir algo.
+**Coordinación:** la sesión de la persona de assets debe empezar siempre invocando a `arte-pilar-agent` (`.claude/agents/arte-pilar-agent.md`) — es el equivalente de `pilar-agent` pero para la parte visual. Lee este documento, el checklist `assets-progreso.md` y el estado real del todolist de código para decidir qué pieza toca ahora, con qué herramienta generarla (Claude para concept/prompts/organización, PixelLab para el pixel art final) y con qué especificaciones exactas. No hace falta que la persona de assets memorice este documento entero sesión a sesión: para eso está el agente.
 
 ---
 
