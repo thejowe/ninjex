@@ -31,6 +31,19 @@ extends Node2D
 
 const GRUPO_USUREROS := "usureros"
 
+## H6 narrativa (brief 2.4): igual que Tabernera/ViejoMaestro/Pescador, una
+## linea por rango de NetworkManager.misiones_completadas -- ver comentario
+## de decision de diseno en player.gd _update_interaction_hint() sobre por
+## que el Usurero NO tiene tecla de dialogo propia (aparece delante del
+## menu de prestamo en el mismo aviso de "pulsa U").
+const LINEAS := [
+	{"umbral": 0, "texto": "Nadie pide prestado al Usurero por gusto. Cuando no quede nada de nada, aqui estare."},
+	{"umbral": 1, "texto": "Volviste con algo en los bolsillos. Bien -- asi es como se paga lo que se debe."},
+	{"umbral": 3, "texto": "Ya no eres de los que se quedan a cero facil. Sigue asi y dejare de contar tus deudas de memoria."},
+	{"umbral": 6, "texto": "En este puerto todos me deben algo, tarde o temprano. Tu llevas mas tiempo del que esperaba sin volver a pedir."},
+	{"umbral": 10, "texto": "Guardo un lugar en el libro para la gente que paga. El tuyo lleva un rato en blanco."},
+]
+
 @export var radio_prestamo: float = 70.0
 
 ## Fondo minimo (decision de diseno: te saca del apuro -- alcanza para
@@ -53,3 +66,14 @@ const GRUPO_USUREROS := "usureros"
 
 func _ready() -> void:
 	add_to_group(GRUPO_USUREROS)
+
+## Ultima linea cuyo umbral no supera misiones_completadas. LINEAS siempre
+## tiene un umbral 0, asi que esto nunca devuelve "".
+func linea_para(misiones_completadas: int) -> String:
+	var texto := ""
+	for entrada in LINEAS:
+		if entrada["umbral"] <= misiones_completadas:
+			texto = entrada["texto"]
+		else:
+			break
+	return texto
