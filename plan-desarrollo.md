@@ -28,7 +28,7 @@ Se resuelven cuando toque esa tarea, no antes.
 H1 Prototipo de combate
  └─ H2 Bucle económico
      └─ H3 Casino mínimo
-         └─ H4 Bóveda y votación
+         └─ H4 Bóveda compartida
              └─ H5 Hub y taberna
                  └─ H6 Estilos restantes e historia
 ```
@@ -127,17 +127,15 @@ Tareas:
 
 ---
 
-## H4 — Bóveda y votación
+## H4 — Bóveda compartida
 
-Depende de H3. Alcance: bote compartido, votación con fichas, revelación de votos.
-**Hecho cuando:** cuatro personas reales discuten antes de apostar. Se valida con gente, no con tests.
+Depende de H3. Alcance: bote compartido, apuesta libre por cualquier jugador del grupo, sin votación.
+**Hecho cuando:** cualquier jugador puede apostar del bote común sin fricción y se siente dinero de todos. Se valida con gente, no con tests.
 
 Tareas:
 1. Bóveda compartida: el dinero de la misión pertenece a los cuatro jugadores enteros.
-2. Sistema de votación con fichas y tabla de máximo apostable (1 voto=20%, 2=50%, 3=75%, 4=100%).
-3. Revelación de quién votó a favor al resolver.
-4. El Usurero cuando la bóveda llega a cero.
-5. Modo Mesa Alta (sin votación ni límites) como opción al crear partida.
+2. Cualquier jugador puede apostar directamente del pool compartido, sin votación ni límite por número de jugadores.
+3. El Usurero cuando la bóveda llega a cero.
 
 ---
 

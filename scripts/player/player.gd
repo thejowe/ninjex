@@ -158,6 +158,18 @@ var _apuesta_moneda: String = "limpio"
 const APUESTA_STEP := 10.0
 const APUESTA_MONTO_MINIMO := 1.0
 var _apuesta_monto: float = 20.0
+## Costes de chakra de las trampas de casino (H6). Doblados si
+## NetworkManager.sospecha_tramo(peer_id) == "ambar" -- brief 2.3: "las
+## trampas cuestan el doble de chakra". Valores en la misma escala que
+## style_data.projectile_chakra_cost (15-20 tipico).
+const TRAMPA_DADOS_CHAKRA_COST := 15.0
+const CARTAS_RAYO_CHAKRA_COST := 20.0
+## Sospecha ganada por cada uso de trampa (H6) -- ver NetworkManager
+## SOSPECHA_AMBAR_UMBRAL/SOSPECHA_ROJO_UMBRAL para los tramos. La de Cartas
+## es menor porque su ventaja (elegir entre dos cartas) es mas modesta que
+## forzar un dado ganador siempre.
+const SOSPECHA_POR_TRAMPA_DADOS := 15.0
+const SOSPECHA_POR_TRAMPA_CARTAS := 10.0
 ## Peso del botin (brief H2 tarea 4): cada cadaver cargado resta velocidad.
 ## MIN_CARGA_SPEED_RATIO evita que cargar el maximo te deje casi inmovil --
 ## seria un castigo, no una decision interesante.
@@ -439,6 +451,20 @@ func _physics_process(delta: float) -> void:
 			_request_apostar_dados("alto")
 		if Input.is_action_just_pressed("apostar_bajo"):
 			_request_apostar_dados("bajo")
+		if Input.is_action_just_pressed("ruleta_rojo"):
+			_request_girar_ruleta("rojo")
+		if Input.is_action_just_pressed("ruleta_azul"):
+			_request_girar_ruleta("azul")
+		if Input.is_action_just_pressed("ruleta_oro"):
+			_request_girar_ruleta("oro")
+		if Input.is_action_just_pressed("ruleta_clan"):
+			_request_girar_ruleta("clan")
+		if Input.is_action_just_pressed("jugar_cartas"):
+			_request_jugar_cartas()
+		if Input.is_action_just_pressed("pelea_izquierda"):
+			_request_apostar_pelea("izquierda")
+		if Input.is_action_just_pressed("pelea_derecha"):
+			_request_apostar_pelea("derecha")
 		if Input.is_action_just_pressed("toggle_moneda_apuesta"):
 			_toggle_apuesta_moneda()
 		if Input.is_action_just_pressed("apuesta_subir"):
@@ -514,6 +540,15 @@ func _update_money_label() -> void:
 	# tercer Label solo para esto.
 	if NetworkManager.usurero_deuda_pendiente > 0.0:
 		texto += "  |  Deuda Usurero: -%.0f" % NetworkManager.usurero_deuda_pendiente
+	# Aviso de sospecha (H6): solo el propio tramo, igual que el resto de
+	# este Label es informacion del propio jugador, no del grupo.
+	var peer_id := get_multiplayer_authority()
+	var tramo := NetworkManager.sospecha_tramo(peer_id)
+	if tramo == "ambar":
+		texto += "  |  Sospecha: AMBAR (trampas al doble de chakra)"
+	elif tramo == "rojo":
+		var restante: float = NetworkManager.sospecha_expulsado_restante.get(peer_id, 0.0)
+		texto += "  |  Sospecha: ROJO -- expulsado %.0fs (sin cambista)" % restante
 	_money_label.text = texto
 
 ## Que tecla pulsar en el punto de interaccion mas cercano, o "" si no hay
@@ -532,7 +567,13 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_cambista_in_range(CASINO_RANGE) != null:
 		texto = "Pulsa C para cambiar dinero manchado a limpio"
 	elif _find_nearest_mesa_dados_in_range(CASINO_RANGE) != null:
-		texto = "Apuesta %.0f %s -- T alto, B bajo (+/- ajusta, M cambia moneda)" % [_apuesta_monto, _apuesta_moneda]
+		texto = "Apuesta %.0f %s -- T alto, B bajo (mantén 9 con Viento para trampa, +/- ajusta, M cambia moneda)" % [_apuesta_monto, _apuesta_moneda]
+	elif _find_nearest_ruleta_in_range(CASINO_RANGE) != null:
+		texto = "Apuesta %.0f %s a la Rueda del Clan -- Z rojo, K azul, O oro, N clan (+/- ajusta, M cambia moneda)" % [_apuesta_monto, _apuesta_moneda]
+	elif _find_nearest_cartas_selladas_in_range(CASINO_RANGE) != null:
+		texto = "Apuesta %.0f %s en Cartas Selladas -- 7 juega (mantén 8 con Rayo para trampa)" % [_apuesta_monto, _apuesta_moneda]
+	elif _find_nearest_peleas_sotano_in_range(CASINO_RANGE) != null:
+		texto = "Apuesta %.0f %s en las Peleas del Sotano -- , izquierda, . derecha" % [_apuesta_monto, _apuesta_moneda]
 	elif _find_nearest_usurero_in_range(CASINO_RANGE) != null:
 		texto = "Pulsa U para pedir un prestamo"
 	elif _find_nearest_forja_in_range(HUB_RANGE) != null:
@@ -882,6 +923,48 @@ func _find_nearest_taberna_in_range(range_max: float) -> Taberna:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = t
+	return nearest
+
+## Rueda del Clan mas cercana dentro de range_max. Misma proximidad simple
+## que las funciones de arriba.
+func _find_nearest_ruleta_in_range(range_max: float) -> Ruleta:
+	var nearest: Ruleta = null
+	var best_dist: float = INF
+	for r in get_tree().get_nodes_in_group(Ruleta.GRUPO_RULETAS):
+		if not (r is Ruleta):
+			continue
+		var dist: float = global_position.distance_to(r.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = r
+	return nearest
+
+## Mesa de Cartas Selladas mas cercana dentro de range_max. Misma proximidad
+## simple que las funciones de arriba.
+func _find_nearest_cartas_selladas_in_range(range_max: float) -> CartasSelladas:
+	var nearest: CartasSelladas = null
+	var best_dist: float = INF
+	for c in get_tree().get_nodes_in_group(CartasSelladas.GRUPO_CARTAS_SELLADAS):
+		if not (c is CartasSelladas):
+			continue
+		var dist: float = global_position.distance_to(c.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = c
+	return nearest
+
+## Peleas del Sotano mas cercanas dentro de range_max. Misma proximidad
+## simple que las funciones de arriba.
+func _find_nearest_peleas_sotano_in_range(range_max: float) -> PeleasSotano:
+	var nearest: PeleasSotano = null
+	var best_dist: float = INF
+	for p in get_tree().get_nodes_in_group(PeleasSotano.GRUPO_PELEAS_SOTANO):
+		if not (p is PeleasSotano):
+			continue
+		var dist: float = global_position.distance_to(p.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = p
 	return nearest
 
 func _validate_sender() -> bool:
@@ -1710,6 +1793,12 @@ func submit_cambiar_dinero() -> void:
 		return
 	if not _validate_sender():
 		return
+	# Tramo ROJO de sospecha (H6, brief 2.3): "expulsion tres dias de juego,
+	# sin cambista ni pergaminos" -- los pergaminos no existen todavia (fuera
+	# de alcance), asi que lo unico que hay que bloquear de verdad es esto.
+	if NetworkManager.sospecha_tramo(get_multiplayer_authority()) == "rojo":
+		confirm_casino_mensaje.rpc("Estas expulsado del casino por sospecha -- vuelve mas tarde")
+		return
 	var cambista := _find_nearest_cambista_in_range(CASINO_RANGE)
 	if cambista == null:
 		confirm_casino_mensaje.rpc("No hay ningun cambista cerca")
@@ -1736,7 +1825,13 @@ func confirm_cambiar_dinero(nuevo_manchado: float, nuevo_limpio: float, limpio_g
 	_status_label.text = mensaje
 
 func _request_apostar_dados(eleccion: String) -> void:
-	submit_apostar_dados.rpc_id(1, eleccion, _apuesta_moneda, _apuesta_monto)
+	# Trampa retroactiva de Viento (H6): mantener la tecla justo al apostar
+	# es la adaptacion de "empujar el dado justo antes de que pare" -- no
+	# hay animacion de tirada real en este vertical slice (resolver_tirada
+	# es instantaneo), asi que el momento equivalente es el instante en que
+	# se pide la apuesta. Ver mesa_dados.gd resolver_tirada_forzada().
+	var trampa_pedida := Input.is_action_pressed("trampa_dados")
+	submit_apostar_dados.rpc_id(1, eleccion, _apuesta_moneda, _apuesta_monto, trampa_pedida)
 
 ## Apuesta `monto` (ajustable con +/-, ver _apuesta_monto arriba -- ya no es
 ## un monto fijo de mesa) a "alto" o "bajo", con la moneda que el jugador
@@ -1750,7 +1845,7 @@ func _request_apostar_dados(eleccion: String) -> void:
 ## Ver mesa_dados.gd para las reglas de las tres caras y el payout. El RNG
 ## del resultado corre entero en el host dentro de mesa.resolver_tirada().
 @rpc("any_peer", "call_local", "reliable")
-func submit_apostar_dados(eleccion: String, moneda: String, monto: float) -> void:
+func submit_apostar_dados(eleccion: String, moneda: String, monto: float, trampa_pedida: bool) -> void:
 	if not multiplayer.is_server():
 		return
 	if not _validate_sender():
@@ -1772,7 +1867,31 @@ func submit_apostar_dados(eleccion: String, moneda: String, monto: float) -> voi
 		# que no responde.
 		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para esa apuesta" % [monto, moneda])
 		return
-	var resultado := mesa.resolver_tirada(eleccion)
+	# Trampa de Viento (H6, brief 2.3): si se pidio, hace falta el estilo
+	# Viento equipado y chakra suficiente (doblada si estas en tramo AMBAR de
+	# sospecha). Si no hay Viento equipado, mismo confirm_casino_mensaje que
+	# usa el resto del casino para "no puedes" -- pedido explicito de la
+	# tarea, en vez de dejar la tecla sin hacer nada.
+	var peer_id := get_multiplayer_authority()
+	var nuevo_chakra: float = chakra_current
+	var hizo_trampa := false
+	var nueva_sospecha: float = NetworkManager.sospecha_nivel.get(peer_id, 0.0)
+	var nueva_expulsion: float = NetworkManager.sospecha_expulsado_restante.get(peer_id, 0.0)
+	if trampa_pedida:
+		if style_data.element_name != "viento":
+			confirm_casino_mensaje.rpc("Necesitas el estilo Viento equipado para esa trampa")
+		else:
+			var costo: float = TRAMPA_DADOS_CHAKRA_COST * (2.0 if NetworkManager.sospecha_tramo(peer_id) == "ambar" else 1.0)
+			if chakra_current < costo:
+				confirm_casino_mensaje.rpc("No tienes suficiente chakra para empujar el dado")
+			else:
+				hizo_trampa = true
+				nuevo_chakra = chakra_current - costo
+				nueva_sospecha = min(NetworkManager.SOSPECHA_MAX, nueva_sospecha + SOSPECHA_POR_TRAMPA_DADOS)
+				if nueva_sospecha >= NetworkManager.SOSPECHA_ROJO_UMBRAL:
+					nueva_expulsion = NetworkManager.SOSPECHA_DIAS_EXPULSION * NetworkManager.SOSPECHA_SEGUNDOS_POR_DIA
+					nueva_sospecha = 0.0
+	var resultado: Dictionary = mesa.resolver_tirada_forzada(eleccion) if hizo_trampa else mesa.resolver_tirada(eleccion)
 	var gano: bool = resultado["gano"]
 	var cara: int = resultado["cara"]
 	# Usurero: una apuesta GANADA paga deuda pendiente (importe real, no un
@@ -1792,13 +1911,17 @@ func submit_apostar_dados(eleccion: String, moneda: String, monto: float) -> voi
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, monto, recorte_usurero, nueva_deuda)
+	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, monto, recorte_usurero, nueva_deuda, nuevo_chakra, nueva_sospecha, nueva_expulsion, hizo_trampa)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, nueva_deuda: float) -> void:
+func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, nueva_deuda: float, nuevo_chakra: float, nueva_sospecha: float, nueva_expulsion: float, hizo_trampa: bool) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
 	NetworkManager.dinero_manchado = nuevo_manchado
 	NetworkManager.usurero_deuda_pendiente = nueva_deuda
+	chakra_current = nuevo_chakra
+	var peer_id := get_multiplayer_authority()
+	NetworkManager.sospecha_nivel[peer_id] = nueva_sospecha
+	NetworkManager.sospecha_expulsado_restante[peer_id] = nueva_expulsion
 	var resultado_texto: String
 	if gano:
 		resultado_texto = "GANASTE +%.1f" % (apuesta - recorte_usurero)
@@ -1806,8 +1929,11 @@ func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: S
 			resultado_texto += " (recorte Usurero -%.1f, deuda restante: -%.0f)" % [recorte_usurero, nueva_deuda]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
+	var texto := "Dados %s (%s, cara %d): %s" % [moneda, eleccion, cara, resultado_texto]
+	if hizo_trampa:
+		texto += " [Viento: dado forzado]"
 	print("[Dados] Apostaste %s a %s, salio cara %d -> %s (limpio: %.1f, manchado: %.1f)" % [moneda, eleccion, cara, resultado_texto, nuevo_limpio, nuevo_manchado])
-	_status_label.text = "Dados %s (%s, cara %d): %s" % [moneda, eleccion, cara, resultado_texto]
+	_status_label.text = texto
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
 ## Mensaje generico de casino para casos que se ignoran sin penalizar pero

@@ -32,7 +32,7 @@ Pelea limpia → vendes el cuerpo del enemigo → cambias el dinero manchado en 
 
 1. **El valor del cadáver depende de cómo mataste.** Un corte limpio deja un cuerpo caro. Fuego lo carboniza y no vale nada. El combate se optimiza por valor, no solo por daño.
 2. **El casino es infraestructura, no minijuego.** El dinero de los cuerpos está manchado y solo el casino lo cambia, con comisión. Es paso obligatorio, pero apostar nunca lo es.
-3. **La bóveda es compartida.** El dinero de una misión lo tienen los cuatro jugadores enteros, no dividido. Apostarlo requiere votación del grupo.
+3. **La bóveda es compartida.** El dinero de una misión lo tienen los cuatro jugadores enteros, no dividido. Cualquiera del grupo puede apostarlo libremente, sin votación.
 
 ---
 
@@ -83,16 +83,9 @@ Comisión de cambio: 15 %.
 
 Cuatro juegos: dados de tres caras, ruleta, cartas selladas contra NPC, y apuestas sobre peleas. Algunos permiten hacer trampa con técnicas ninja, lo que sube un **medidor de sospecha** con tres tramos: verde (nada), ámbar (trampas al doble de coste), rojo (expulsión tres días de juego, sin cambista ni pergaminos).
 
-**Bóveda compartida y votación:**
+**Bóveda compartida, sin votación:**
 
-| Votos a favor | Máximo apostable del bote |
-|---|---|
-| 1 | 20 % |
-| 2 | 50 % |
-| 3 | 75 % |
-| 4 | 100 % |
-
-Al resolver se muestra quién votó a favor. Si la bóveda queda a cero, aparece el Usurero: fondo mínimo a cambio del 20 % de las cinco misiones siguientes. Modo *Mesa Alta* opcional al crear partida: sin votación ni límites.
+Cualquier jugador del grupo puede apostar del bote común directamente, sin pedir permiso ni votar. Si la bóveda queda a cero, aparece el Usurero: fondo mínimo a cambio del 20 % de las cinco misiones siguientes.
 
 ### 2.4 Hub, tiendas y taberna
 
@@ -151,9 +144,9 @@ Depende de H1. Alcance: cadáveres con estado de conservación, carnicero y boti
 Depende de H2. Alcance: cambista con comisión y el juego de dados. Sin sospecha, sin pergaminos.
 *Hecho cuando:* la comisión del 15 % pica lo suficiente como para que el jugador quiera intentar recuperarla jugando.
 
-**H4 — Bóveda y votación**
-Depende de H3. Alcance: bote compartido, votación con fichas, revelación de votos.
-*Hecho cuando:* cuatro personas reales discuten antes de apostar. Este hito se valida con gente, no con tests.
+**H4 — Bóveda compartida**
+Depende de H3. Alcance: bote compartido, apuesta libre por cualquier jugador del grupo, sin votación.
+*Hecho cuando:* cualquier jugador puede apostar del bote común sin fricción y el grupo lo nota como dinero de todos, no de quien apostó. Este hito se valida con gente, no con tests.
 
 **H5 — Hub y taberna**
 Depende de H4. Alcance: aldea navegable, tiendas de dinero limpio, taberna con brindis y desglose.

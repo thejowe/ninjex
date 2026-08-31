@@ -193,20 +193,9 @@ La expulsión es lo que da peso: sin cambista, tu dinero manchado se acumula sin
 
 El dinero de la misión llega entero a los cuatro. No se divide: **los 2000 los tienen todos**.
 
-Para apostar de la bóveda hay que votar poniendo fichas sobre la mesa:
-
-| Votos a favor | Máximo apostable |
-|---|---|
-| 1 | 20 % del bote |
-| 2 | 50 % |
-| 3 | 75 % |
-| 4 | 100 % |
-
-Al resolver, el juego muestra quién votó a favor. Vergüenza pública, cero daño real.
+Cualquiera del grupo apuesta directamente de la bóveda, sin votar ni pedir permiso. Es dinero de todos, y cualquiera puede arriesgarlo.
 
 Si la bóveda queda a cero, aparece **el Usurero**: te adelanta un fondo mínimo a cambio de un 20 % de las próximas cinco misiones. Aparece por la taberna a recordarlo. El desastre se convierte en trama.
-
-Opción **Mesa Alta** al crear la partida: sin votación y sin límites. Cualquiera apuesta todo. Para grupos que quieran el caos entero.
 
 ### Reglas duras
 
@@ -298,7 +287,7 @@ La taberna es donde el juego dice **"esta gente son amigos"** en vez de "esta ge
 1. **Prototipo de combate**: Fuego, Viento y Físico. Una sala, enemigos tontos, dos jugadores en red o con mando. Pregunta a responder: ¿la combinación colocada con el cursor se siente bien, y el Físico llega a tiempo?
 2. **Bucle económico**: añadir cadáveres con estado de conservación, el carnicero y el boticario. Sin casino.
 3. **Casino mínimo**: solo el cambista y los dados. Comprobar si el 15 % de comisión pica lo suficiente como para querer jugar.
-4. **Bóveda y votación**: probar con cuatro personas reales. Es la mecánica que más depende de gente y menos de código.
+4. **Bóveda compartida**: apuesta libre del bote común, sin votación. Probar con cuatro personas reales cómo se siente arriesgar dinero que es de todos.
 5. **Taberna y hub**: cuando el bucle ya funcione. Es la capa que lo hace acogedor, no la que lo hace jugable.
 6. **Historia y estilos restantes**: al final, sobre una base que ya se sostiene.
 
