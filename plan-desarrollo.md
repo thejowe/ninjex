@@ -211,10 +211,11 @@ Aquí es donde se cierra el resto del diseño documentado en `diseno-juego-ninja
 
 ## 6. Agentes especializados creados
 
-Para que el trabajo en cada sistema no se pise ni pierda las reglas invariantes al delegar tareas, se han creado 6 subagentes en `.claude/agents/`, cada uno dueño de un dominio del juego. Se invocan con el Agent tool cuando toque trabajar en su área:
+Para que el trabajo en cada sistema no se pise ni pierda las reglas invariantes al delegar tareas, se han creado subagentes en `.claude/agents/`, cada uno dueño de un dominio del juego. Se invocan con el Agent tool cuando toque trabajar en su área:
 
 | Agente | Dominio | Se usa desde |
 |---|---|---|
+| `pilar-agent` | **Director de proyecto.** Contexto completo (diseño + plan + progreso real). Dice qué toca ahora y qué agente lanzar. No implementa nada. | **Siempre el primero, al empezar cada sesión** |
 | `combat-agent` | Movimiento, apuntado, las 5 ranuras por estilo, chakra, combinaciones, hitboxes | H1 |
 | `netcode-agent` | Arquitectura multijugador host-autoritativo, validación de combos con latencia | H1 (paso 12) en adelante |
 | `economy-agent` | Cadáveres, estado de conservación, compradores, peso, prisioneros vivos | H2 |
@@ -222,7 +223,14 @@ Para que el trabajo en cada sistema no se pise ni pierda las reglas invariantes 
 | `hub-agent` | Puerto Bajo, tiendas de dinero limpio, taberna El Ancla Rota | H5 |
 | `narrative-agent` | Historia, misiones, biomas, diálogos, pergaminos/sellos | H6 |
 
-Cada agente tiene embebidas las reglas invariantes de la sección 3 que le afectan, para no tener que repetírselas cada vez.
+Cada agente de sistema tiene embebidas las reglas invariantes de la sección 3 que le afectan, para no tener que repetírselas cada vez.
+
+### Flujo de trabajo recomendado en cada sesión
+
+1. **Lanzar `pilar-agent` primero.** Lee el brief, el diseño, este plan y el estado real del todolist (y del repo, por si algo quedó sin marcar), y responde con: dónde estamos, qué tarea toca, y qué agente hay que lanzar para hacerla.
+2. **Lanzar el agente de sistema que indique el Pilar** (`combat-agent`, `netcode-agent`, etc.) para ejecutar esa tarea concreta.
+3. Marcar la tarea como completada en el todolist (`TaskUpdate`) cuando esté hecha y validada.
+4. En la siguiente sesión, volver a empezar por `pilar-agent` — nunca asumir de memoria en qué punto se quedó el proyecto.
 
 ---
 
