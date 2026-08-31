@@ -45,21 +45,23 @@ Agua, Rayo, Tierra completos con sus 5 estilos cada uno, 4 combinaciones de suel
 
 ---
 
-## 2. Qué queda por hacer de verdad (código)
+## 2. Qué queda por hacer de verdad (código) — todolist real
 
-Esto es lo único que un agente de código debería tocar ahora, en este orden (cada bloque no depende estrictamente de los demás salvo que se diga lo contrario). **Esta lista vive también en el `TaskList` que gestiona `pilar-agent` — es la única fuente de tareas de código, no incluye ni debe incluir nada de assets.**
+**Este checklist ES el todolist de código, no una copia.** Vive en este archivo a propósito, porque es lo único que llega igual a cualquier dispositivo con un `git pull` — una herramienta tipo `TaskList` puede no existir según el entorno donde corra la sesión (no es parte del repo, no viaja con git). Si en tu sesión sí existe una herramienta de tareas, úsala como ayuda visual si quieres, pero **la fuente de verdad es marcar `[x]` aquí y hacer commit** — nunca al revés.
 
-1. **Playtest de validación de H4/H5 con gente real.** El brief pedía validar la bóveda con 4 personas discutiendo — como se recortó la votación, esto ya no aplica tal cual, pero conviene una sesión de juego real de varias personas para confirmar que el recorte se siente bien y no falta nada crítico antes de seguir construyendo encima.
-2. **Sellos y pergaminos** (H6): secuencia de 3 direcciones manteniendo R, técnicas ocultas, tienda de pergaminos comprables con fichas.
-3. **Medidor de sospecha y trampas del casino** (H6): tres tramos verde/ámbar/rojo, trampa con Viento en la Mesa de Dados subiendo sospecha.
-4. **Resto de juegos de casino** (H6): Rueda del Clan, Cartas Selladas, Peleas del Sótano.
-5. **Falsificador, clan rival y prisioneros vivos** (H6): requiere biomas/misiones que generen los objetos que piden.
-6. **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — duración 12-18 min, tres áreas encadenadas, vuelta a extracción.
-7. **Prólogo, elección de estilo, historia y diálogos de NPCs** (H6, al final).
+Orden de trabajo (cada ítem no depende estrictamente de los demás salvo que se diga lo contrario — ver notas de dependencia):
+
+- [ ] **Playtest de validación de H4/H5 con gente real.** El brief pedía validar la bóveda con 4 personas discutiendo — como se recortó la votación, esto ya no aplica tal cual, pero conviene una sesión de juego real de varias personas para confirmar que el recorte se siente bien y no falta nada crítico antes de seguir construyendo encima.
+- [ ] **Sellos y pergaminos** (H6): secuencia de 3 direcciones manteniendo R, técnicas ocultas, tienda de pergaminos comprables con fichas. Agente: `combat-agent`.
+- [ ] **Medidor de sospecha y trampas del casino** (H6): tres tramos verde/ámbar/rojo, trampa con Viento en la Mesa de Dados subiendo sospecha. Agente: `casino-agent`.
+- [ ] **Resto de juegos de casino** (H6): Rueda del Clan, Cartas Selladas, Peleas del Sótano. Agente: `casino-agent`.
+- [ ] **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — duración 12-18 min, tres áreas encadenadas, vuelta a extracción. Agente: `narrative-agent`.
+- [ ] **Falsificador, clan rival y prisioneros vivos** (H6) — *depende del ítem anterior*: necesita biomas/misiones que generen los objetos que piden. Agente: `economy-agent`.
+- [ ] **Prólogo, elección de estilo, historia y diálogos de NPCs** (H6, al final) — *depende de los biomas/misión*. Agente: `narrative-agent`.
 
 No se retoma la bóveda con votación, Mesa Alta, sastrería, casa del equipo, música/emotes/pizarra salvo que el usuario lo pida explícitamente — están descartadas del alcance actual, no en una cola de "pendiente".
 
-**Sobre el arte:** deliberadamente no está en esta lista ni en el `TaskList` de código. El trabajo de assets tiene su propio plan (`plan-assets.md`) y su propio checklist de progreso (`assets-progreso.md`), gestionados por `arte-pilar-agent` — un sistema de seguimiento completamente aparte, sin acceso al `TaskList` de código, para que ninguno de los dos equipos bloquee al otro. La única conexión es que `arte-pilar-agent` lee (nunca edita) la sección 1 de este documento para saber qué hitos de código ya están validados.
+**Sobre el arte:** deliberadamente no está en esta lista. El trabajo de assets tiene su propio plan (`plan-assets.md`) y su propio checklist de progreso (`assets-progreso.md`), gestionado por `arte-pilar-agent` — un sistema de seguimiento completamente aparte, para que ninguno de los dos equipos bloquee al otro. La única conexión es que `arte-pilar-agent` lee (nunca edita) la sección 1 de este documento para saber qué hitos de código ya están validados.
 
 ---
 
