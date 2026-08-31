@@ -33,9 +33,9 @@ const GRUPO_USUREROS := "usureros"
 
 @export var radio_prestamo: float = 70.0
 
-## Fondo minimo (decision de diseno: te saca del apuro -- alcanza para una
-## apuesta de sobra en la Mesa de Dados (MesaDados.apuesta_fija = 20.0) con
-## margen para intentarlo mas de una vez -- pero no es gratis ni te deja
+## Fondo minimo (decision de diseno: te saca del apuro -- alcanza para
+## varias apuestas del monto por defecto en la Mesa de Dados (ver
+## player.gd _apuesta_monto, 20.0 de partida, ajustable) -- pero no es gratis ni te deja
 ## comodo).
 @export var monto_prestamo: float = 50.0
 

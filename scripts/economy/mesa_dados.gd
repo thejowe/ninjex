@@ -32,11 +32,13 @@ const CARA_NEUTRO := 2
 const CARA_ALTO := 3
 
 @export var radio_apuesta: float = 70.0
-## Apuesta fija por tirada en vez de cantidad variable: un vertical slice
-## sin HUD no tiene forma de que el jugador escriba una cantidad, asi que
-## una unica tecla apuesta siempre lo mismo -- mismo criterio que "vender
-## todos los cadaveres cargados de golpe" en player.gd confirm_vender().
-@export var apuesta_fija: float = 20.0
+## Apuesta ajustable (pedido del usuario: "que se pueda apostar todo lo que
+## quieras, no un minimo de 20"). Ya no es un monto fijo -- solo el suelo
+## para no poder apostar 0 ni negativo. El jugador ajusta cuanto apostar con
+## +/- (ver player.gd _apuesta_monto/APUESTA_STEP) y esa cantidad viaja en
+## el RPC submit_apostar_dados(); el host solo comprueba que sea >= esto y
+## que haya fondos suficientes.
+@export var apuesta_minima: float = 1.0
 
 @onready var _visual: ColorRect = $Visual
 

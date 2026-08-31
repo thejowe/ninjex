@@ -147,6 +147,17 @@ const HUB_RANGE := 80.0
 ## (toggle_moneda_apuesta), por defecto limpio (el camino "seguro" que
 ## sigue el brief al pie de la letra).
 var _apuesta_moneda: String = "limpio"
+## Cuanto se apuesta en la mesa de dados (pedido del usuario: "que se pueda
+## apostar todo lo que quieras, no un minimo de 20"). Antes era un monto fijo
+## (MesaDados.apuesta_fija = 20.0) sin forma de cambiarlo -- ahora se ajusta
+## con +/- (apuesta_subir/apuesta_bajar) de APUESTA_STEP en APUESTA_STEP, sin
+## techo (el host igual rechaza si no hay fondos, ver submit_apostar_dados),
+## con suelo en APUESTA_MONTO_MINIMO para no poder apostar 0 ni negativo. Es
+## puramente local (como _apuesta_moneda) -- no hace falta red hasta que de
+## verdad se aposte.
+const APUESTA_STEP := 10.0
+const APUESTA_MONTO_MINIMO := 1.0
+var _apuesta_monto: float = 20.0
 ## Peso del botin (brief H2 tarea 4): cada cadaver cargado resta velocidad.
 ## MIN_CARGA_SPEED_RATIO evita que cargar el maximo te deje casi inmovil --
 ## seria un castigo, no una decision interesante.
@@ -430,6 +441,10 @@ func _physics_process(delta: float) -> void:
 			_request_apostar_dados("bajo")
 		if Input.is_action_just_pressed("toggle_moneda_apuesta"):
 			_toggle_apuesta_moneda()
+		if Input.is_action_just_pressed("apuesta_subir"):
+			_ajustar_apuesta_monto(APUESTA_STEP)
+		if Input.is_action_just_pressed("apuesta_bajar"):
+			_ajustar_apuesta_monto(-APUESTA_STEP)
 		if Input.is_action_just_pressed("pedir_prestamo"):
 			_request_prestamo_usurero()
 		if Input.is_action_just_pressed("comprar_forja"):
@@ -458,6 +473,15 @@ func _toggle_apuesta_moneda() -> void:
 		_status_label.text = "Apuesta con MANCHADO (blanquea sin comision si ganas)"
 	else:
 		_status_label.text = "Apuesta con LIMPIO"
+
+## Solo local, igual que _toggle_apuesta_moneda -- ajustar cuanto vas a
+## apostar es una preferencia previa, no una accion de red hasta que de
+## verdad pulses T/B. Sin techo (el host valida fondos al apostar de
+## verdad), suelo en APUESTA_MONTO_MINIMO para no poder dejarlo en 0.
+func _ajustar_apuesta_monto(delta: float) -> void:
+	_apuesta_monto = max(APUESTA_MONTO_MINIMO, _apuesta_monto + delta)
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = "Apuesta actual: %.0f (+/- para ajustar)" % _apuesta_monto
 
 func _handle_movement() -> void:
 	if _impulse_active_time > 0.0 or _potenciador_dash_active_time > 0.0:
@@ -508,7 +532,7 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_cambista_in_range(CASINO_RANGE) != null:
 		texto = "Pulsa C para cambiar dinero manchado a limpio"
 	elif _find_nearest_mesa_dados_in_range(CASINO_RANGE) != null:
-		texto = "Pulsa T para apostar alto, B para apostar bajo (M para cambiar de moneda)"
+		texto = "Apuesta %.0f %s -- T alto, B bajo (+/- ajusta, M cambia moneda)" % [_apuesta_monto, _apuesta_moneda]
 	elif _find_nearest_usurero_in_range(CASINO_RANGE) != null:
 		texto = "Pulsa U para pedir un prestamo"
 	elif _find_nearest_forja_in_range(HUB_RANGE) != null:
@@ -1712,20 +1736,21 @@ func confirm_cambiar_dinero(nuevo_manchado: float, nuevo_limpio: float, limpio_g
 	_status_label.text = mensaje
 
 func _request_apostar_dados(eleccion: String) -> void:
-	submit_apostar_dados.rpc_id(1, eleccion, _apuesta_moneda)
+	submit_apostar_dados.rpc_id(1, eleccion, _apuesta_moneda, _apuesta_monto)
 
-## Apuesta la cantidad fija de la mesa (MesaDados.apuesta_fija) a "alto" o
-## "bajo", con la moneda que el jugador tenga seleccionada (tecla M) --
-## "limpio" (el camino que sigue el brief al pie de la letra) o "manchado"
-## (via de blanquear jugando en vez de pagando la comision del Cambista,
-## decision de diseno del usuario, ver _apuesta_moneda arriba). `moneda`
-## solo elige DE QUE POOL sale/entra el dinero -- el host sigue siendo quien
+## Apuesta `monto` (ajustable con +/-, ver _apuesta_monto arriba -- ya no es
+## un monto fijo de mesa) a "alto" o "bajo", con la moneda que el jugador
+## tenga seleccionada (tecla M) -- "limpio" (el camino que sigue el brief al
+## pie de la letra) o "manchado" (via de blanquear jugando en vez de pagando
+## la comision del Cambista, decision de diseno del usuario, ver
+## _apuesta_moneda arriba). `moneda` y `monto` solo dicen DE QUE POOL y
+## CUANTO se pide jugarse -- el host sigue siendo quien valida fondos y
 ## calcula el resultado real, asi que el cliente no puede inventarse ni la
-## cantidad ni el resultado, solo pedir con cual de sus dos monederos jugar.
+## cantidad ni el resultado, solo pedir con que monedero y cuanto.
 ## Ver mesa_dados.gd para las reglas de las tres caras y el payout. El RNG
 ## del resultado corre entero en el host dentro de mesa.resolver_tirada().
 @rpc("any_peer", "call_local", "reliable")
-func submit_apostar_dados(eleccion: String, moneda: String) -> void:
+func submit_apostar_dados(eleccion: String, moneda: String, monto: float) -> void:
 	if not multiplayer.is_server():
 		return
 	if not _validate_sender():
@@ -1738,11 +1763,14 @@ func submit_apostar_dados(eleccion: String, moneda: String) -> void:
 	if mesa == null:
 		confirm_casino_mensaje.rpc("No hay ninguna mesa de dados cerca")
 		return
+	if monto < mesa.apuesta_minima:
+		confirm_casino_mensaje.rpc("La apuesta minima es %.0f" % mesa.apuesta_minima)
+		return
 	var disponible: float = NetworkManager.dinero_limpio if moneda == "limpio" else NetworkManager.dinero_manchado
-	if disponible < mesa.apuesta_fija:
+	if disponible < monto:
 		# Igual que en el Cambista: sin aviso esto se ve identico a un boton
 		# que no responde.
-		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para apostar" % [mesa.apuesta_fija, moneda])
+		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para esa apuesta" % [monto, moneda])
 		return
 	var resultado := mesa.resolver_tirada(eleccion)
 	var gano: bool = resultado["gano"]
@@ -1752,19 +1780,19 @@ func submit_apostar_dados(eleccion: String, moneda: String) -> void:
 	# genera nada que recortar.
 	var recorte_usurero := 0.0
 	var nueva_deuda: float = NetworkManager.usurero_deuda_pendiente
-	var ganancia: float = mesa.apuesta_fija
+	var ganancia: float = monto
 	if gano and nueva_deuda > 0.0:
-		recorte_usurero = min(mesa.apuesta_fija * NetworkManager.usurero_deuda_recorte_porcentaje, nueva_deuda)
+		recorte_usurero = min(monto * NetworkManager.usurero_deuda_recorte_porcentaje, nueva_deuda)
 		ganancia -= recorte_usurero
 		nueva_deuda -= recorte_usurero
-	var delta: float = ganancia if gano else -mesa.apuesta_fija
+	var delta: float = ganancia if gano else -monto
 	var nuevo_limpio: float = NetworkManager.dinero_limpio
 	var nuevo_manchado: float = NetworkManager.dinero_manchado
 	if moneda == "limpio":
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, mesa.apuesta_fija, recorte_usurero, nueva_deuda)
+	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, monto, recorte_usurero, nueva_deuda)
 
 @rpc("any_peer", "call_local", "reliable")
 func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, nueva_deuda: float) -> void:
