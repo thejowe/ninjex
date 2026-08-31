@@ -485,12 +485,11 @@ func _handle_aim() -> void:
 ## solo lee su valor actual cada frame, no necesita señal ni RPC propio.
 func _update_money_label() -> void:
 	var texto := "Manchado: %.0f  |  Limpio: %.0f" % [NetworkManager.dinero_manchado, NetworkManager.dinero_limpio]
-	# Aviso visible de deuda con el Usurero (H4 recortado, tarea del usuario
-	# punto 3): mientras usurero_deuda_transacciones_restantes > 0, se nota
-	# en el mismo Label de dinero -- reutilizado en vez de crear un tercer
-	# Label solo para esto.
-	if NetworkManager.usurero_deuda_transacciones_restantes > 0:
-		texto += "  |  Deuda Usurero: %d" % NetworkManager.usurero_deuda_transacciones_restantes
+	# Aviso visible de deuda con el Usurero: en NEGATIVO (pedido explicito
+	# del usuario), mismo Label de dinero -- reutilizado en vez de crear un
+	# tercer Label solo para esto.
+	if NetworkManager.usurero_deuda_pendiente > 0.0:
+		texto += "  |  Deuda Usurero: -%.0f" % NetworkManager.usurero_deuda_pendiente
 	_money_label.text = texto
 
 ## Que tecla pulsar en el punto de interaccion mas cercano, o "" si no hay
@@ -1630,39 +1629,40 @@ func submit_vender() -> void:
 		vendidos.append(path)
 	if vendidos.is_empty():
 		return
-	# Usurero (H4 recortado, ver usurero.gd): mientras haya deuda activa,
-	# esta venta cuenta como una de las proximas transacciones que generan
-	# dinero, recortada un usurero_deuda_recorte_porcentaje antes de sumarse
-	# al pool. El recorte se pierde, no va a ningun sitio -- es el pago de
-	# la deuda.
+	# Usurero: mientras quede deuda pendiente (importe real, no un contador
+	# de transacciones -- ver NetworkManager.usurero_deuda_pendiente), esta
+	# venta se recorta un usurero_deuda_recorte_porcentaje antes de sumarse
+	# al pool, y ese recorte paga deuda directamente. min() evita recortar
+	# de mas si lo que queda por pagar es menor que el recorte calculado
+	# (asi la deuda no se va a negativo al saldarse con la ultima venta).
 	var recorte_usurero := 0.0
-	var transacciones_restantes: int = NetworkManager.usurero_deuda_transacciones_restantes
-	if transacciones_restantes > 0:
-		recorte_usurero = total_precio * NetworkManager.usurero_deuda_recorte_porcentaje
+	var nueva_deuda: float = NetworkManager.usurero_deuda_pendiente
+	if nueva_deuda > 0.0:
+		recorte_usurero = min(total_precio * NetworkManager.usurero_deuda_recorte_porcentaje, nueva_deuda)
 		total_precio -= recorte_usurero
-		transacciones_restantes -= 1
+		nueva_deuda -= recorte_usurero
 	var nuevo_total: float = NetworkManager.dinero_manchado + total_precio
-	confirm_vender.rpc(vendidos, nuevo_total, total_precio, recorte_usurero, transacciones_restantes)
+	confirm_vender.rpc(vendidos, nuevo_total, total_precio, recorte_usurero, nueva_deuda)
 
 ## Aplica la venta igual en todos los peers: borra los cadaveres vendidos,
 ## los quita de la lista de carga y actualiza el pool compartido de dinero
 ## manchado (NetworkManager.dinero_manchado -- mutarlo aqui directamente
 ## vale porque este RPC ya es call_local reliable en si mismo, no hace
-## falta un RPC aparte solo para el dinero). Tambien aplica el contador de
-## deuda del Usurero ya decidido por el host en submit_vender().
+## falta un RPC aparte solo para el dinero). Tambien aplica la deuda del
+## Usurero ya decidida por el host en submit_vender().
 @rpc("any_peer", "call_local", "reliable")
-func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, transacciones_restantes: int) -> void:
+func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, nueva_deuda: float) -> void:
 	for path in vendidos:
 		carried_cadaver_paths.erase(path)
 		var cad := get_node_or_null(path) as Cadaver
 		if cad != null and is_instance_valid(cad):
 			cad.queue_free()
 	NetworkManager.dinero_manchado = nuevo_total
-	NetworkManager.usurero_deuda_transacciones_restantes = transacciones_restantes
+	NetworkManager.usurero_deuda_pendiente = nueva_deuda
 	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])
 	_status_label.modulate = Color(1, 1, 1)
 	if recorte_usurero > 0.0:
-		_status_label.text = "Vendiste %d cadaver(es): +%.0f manchado (recorte Usurero -%.0f, deuda: %d)" % [vendidos.size(), precio_ganado, recorte_usurero, transacciones_restantes]
+		_status_label.text = "Vendiste %d cadaver(es): +%.0f manchado (recorte Usurero -%.0f, deuda restante: -%.0f)" % [vendidos.size(), precio_ganado, recorte_usurero, nueva_deuda]
 	else:
 		_status_label.text = "Vendiste %d cadaver(es): +%.0f manchado" % [vendidos.size(), precio_ganado]
 
@@ -1747,17 +1747,16 @@ func submit_apostar_dados(eleccion: String, moneda: String) -> void:
 	var resultado := mesa.resolver_tirada(eleccion)
 	var gano: bool = resultado["gano"]
 	var cara: int = resultado["cara"]
-	# Usurero (H4 recortado, ver usurero.gd): una apuesta GANADA cuenta como
-	# una de las transacciones que generan dinero mientras haya deuda activa
-	# -- perder no cuenta, no genera nada que recortar. Mismo mecanismo que
-	# submit_vender() de abajo.
+	# Usurero: una apuesta GANADA paga deuda pendiente (importe real, no un
+	# contador -- ver comentario de submit_vender) -- perder no cuenta, no
+	# genera nada que recortar.
 	var recorte_usurero := 0.0
-	var transacciones_restantes: int = NetworkManager.usurero_deuda_transacciones_restantes
+	var nueva_deuda: float = NetworkManager.usurero_deuda_pendiente
 	var ganancia: float = mesa.apuesta_fija
-	if gano and transacciones_restantes > 0:
-		recorte_usurero = mesa.apuesta_fija * NetworkManager.usurero_deuda_recorte_porcentaje
+	if gano and nueva_deuda > 0.0:
+		recorte_usurero = min(mesa.apuesta_fija * NetworkManager.usurero_deuda_recorte_porcentaje, nueva_deuda)
 		ganancia -= recorte_usurero
-		transacciones_restantes -= 1
+		nueva_deuda -= recorte_usurero
 	var delta: float = ganancia if gano else -mesa.apuesta_fija
 	var nuevo_limpio: float = NetworkManager.dinero_limpio
 	var nuevo_manchado: float = NetworkManager.dinero_manchado
@@ -1765,18 +1764,18 @@ func submit_apostar_dados(eleccion: String, moneda: String) -> void:
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, mesa.apuesta_fija, recorte_usurero, transacciones_restantes)
+	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, mesa.apuesta_fija, recorte_usurero, nueva_deuda)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, transacciones_restantes: int) -> void:
+func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, nueva_deuda: float) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
 	NetworkManager.dinero_manchado = nuevo_manchado
-	NetworkManager.usurero_deuda_transacciones_restantes = transacciones_restantes
+	NetworkManager.usurero_deuda_pendiente = nueva_deuda
 	var resultado_texto: String
 	if gano:
 		resultado_texto = "GANASTE +%.1f" % (apuesta - recorte_usurero)
 		if recorte_usurero > 0.0:
-			resultado_texto += " (recorte Usurero -%.1f, deuda: %d)" % [recorte_usurero, transacciones_restantes]
+			resultado_texto += " (recorte Usurero -%.1f, deuda restante: -%.0f)" % [recorte_usurero, nueva_deuda]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
 	print("[Dados] Apostaste %s a %s, salio cara %d -> %s (limpio: %.1f, manchado: %.1f)" % [moneda, eleccion, cara, resultado_texto, nuevo_limpio, nuevo_manchado])
@@ -1826,20 +1825,23 @@ func submit_pedir_prestamo_usurero() -> void:
 	if NetworkManager.dinero_manchado > 0.0 or NetworkManager.dinero_limpio > 0.0:
 		confirm_casino_mensaje.rpc("El Usurero solo presta cuando te has quedado sin nada de nada")
 		return
-	if NetworkManager.usurero_deuda_transacciones_restantes > 0:
+	if NetworkManager.usurero_deuda_pendiente > 0.0:
 		confirm_casino_mensaje.rpc("Ya le debes al Usurero -- salda la deuda antes de pedir mas")
 		return
 	var nuevo_limpio: float = NetworkManager.dinero_limpio + usurero.monto_prestamo
-	confirm_pedir_prestamo_usurero.rpc(nuevo_limpio, usurero.monto_prestamo, usurero.recorte_porcentaje, usurero.num_transacciones_recorte)
+	# La deuda total incluye el interes (brief 2.3: "20%"): pides 50, debes
+	# 60 -- ver comentario de recorte_porcentaje en usurero.gd.
+	var deuda_total: float = usurero.monto_prestamo * (1.0 + usurero.recorte_porcentaje)
+	confirm_pedir_prestamo_usurero.rpc(nuevo_limpio, usurero.monto_prestamo, deuda_total, usurero.recorte_porcentaje)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_pedir_prestamo_usurero(nuevo_limpio: float, monto: float, recorte_porcentaje: float, num_transacciones: int) -> void:
+func confirm_pedir_prestamo_usurero(nuevo_limpio: float, monto: float, deuda_total: float, recorte_porcentaje: float) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
-	NetworkManager.usurero_deuda_transacciones_restantes = num_transacciones
+	NetworkManager.usurero_deuda_pendiente = deuda_total
 	NetworkManager.usurero_deuda_recorte_porcentaje = recorte_porcentaje
-	print("[Usurero] Prestamo de %.1f limpio -- deuda activa: %d transacciones al %.0f%% de recorte" % [monto, num_transacciones, recorte_porcentaje * 100.0])
+	print("[Usurero] Prestamo de %.1f limpio -- deuda: -%.0f (se paga al %.0f%% de cada venta/apuesta ganada)" % [monto, deuda_total, recorte_porcentaje * 100.0])
 	_status_label.modulate = Color(1, 0.6, 0.6)
-	_status_label.text = "Usurero: +%.0f limpio -- deuda activa (%d transacciones al %.0f%% de recorte)" % [monto, num_transacciones, recorte_porcentaje * 100.0]
+	_status_label.text = "Usurero: +%.0f limpio -- deuda: -%.0f" % [monto, deuda_total]
 
 # =========================================================================
 # Forja (H5 tarea 2, Calle de los Faroles) -- tecla Y. Mismo patron

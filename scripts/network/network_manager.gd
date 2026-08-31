@@ -37,14 +37,15 @@ var dinero_manchado: float = 0.0
 var dinero_limpio: float = 0.0
 
 ## Deuda con el Usurero (H4 recortado a solo el Usurero -- decision del
-## usuario, sin votacion ni Modo Mesa Alta; ver usurero.gd para el trigger y
-## la adaptacion temporal de "5 misiones" a "5 transacciones que generan
-## dinero"). Mientras > 0, cuenta cuantas transacciones que generan dinero
-## (venta de cadaveres exitosa o apuesta de dados ganada) quedan por pagar
-## con un recorte. Solo lo muta el host, siempre desde dentro de un RPC
+## usuario, sin votacion ni Modo Mesa Alta; ver usurero.gd para el trigger).
+## Importe REAL pendiente de pagar (monto del prestamo + interes), no un
+## contador de transacciones -- se muestra en negativo en el HUD (pedido
+## explicito del usuario: "que salga el dinero en negativo") y baja con
+## cada transaccion que genera dinero (venta exitosa o apuesta ganada)
+## hasta llegar a 0. Solo lo muta el host, siempre desde dentro de un RPC
 ## call_local (player.gd confirm_pedir_prestamo_usurero/confirm_vender/
 ## confirm_apostar_dados), mismo patron que dinero_manchado/dinero_limpio.
-var usurero_deuda_transacciones_restantes: int = 0
+var usurero_deuda_pendiente: float = 0.0
 
 ## Porcentaje de recorte vigente para la deuda activa de arriba, copiado del
 ## Usurero.recorte_porcentaje del nodo con el que se pidio el prestamo en el

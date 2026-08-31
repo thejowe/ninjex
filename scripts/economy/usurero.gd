@@ -21,11 +21,13 @@ extends Node2D
 ##
 ## Adaptacion temporal de "20% de las 5 misiones siguientes" (brief 2.3): el
 ## vertical slice todavia no tiene el concepto de mision (llega en H5, ver
-## brief-traspaso-claude-code.md 2.5), asi que el recorte se paga con las
-## proximas num_transacciones_recorte TRANSACCIONES QUE GENERAN DINERO --
+## brief-traspaso-claude-code.md 2.5), asi que en vez de "5 misiones" la
+## deuda es un IMPORTE REAL (monto_prestamo + interes) que se paga con un
+## recorte del mismo porcentaje sobre cada TRANSACCION QUE GENERA DINERO --
 ## una venta de cadaveres exitosa o una apuesta de dados ganada en la Mesa
-## de Dados (ver player.gd confirm_vender/confirm_apostar_dados). Revisar
-## esta adaptacion cuando exista el concepto real de mision.
+## de Dados (ver player.gd confirm_vender/confirm_apostar_dados) -- hasta
+## saldar el importe entero. Revisar esta adaptacion cuando exista el
+## concepto real de mision.
 
 const GRUPO_USUREROS := "usureros"
 
@@ -37,15 +39,15 @@ const GRUPO_USUREROS := "usureros"
 ## comodo).
 @export var monto_prestamo: float = 50.0
 
-## Recorte que sufren las proximas num_transacciones_recorte transacciones
-## que generan dinero, ANTES de sumarse al pool correspondiente. El recorte
-## no va a ningun sitio, simplemente se pierde -- es el pago de la deuda
-## (brief 2.3: "20%").
+## Interes del prestamo (brief 2.3: "20%"): la deuda total a devolver es
+## monto_prestamo * (1 + recorte_porcentaje) -- ver player.gd
+## confirm_pedir_prestamo_usurero(). Se paga con un recorte de este mismo
+## porcentaje sobre cada transaccion que genera dinero (venta exitosa o
+## apuesta ganada) hasta saldar el importe entero, en vez de un numero fijo
+## de transacciones -- si ganas poco cada vez tardas mas en pagar, si ganas
+## mucho lo saldas antes. Adaptacion de "20% de las 5 misiones siguientes"
+## del brief (el concepto real de mision no existe hasta H5+).
 @export var recorte_porcentaje: float = 0.20
-
-## Cuantas transacciones que generan dinero quedan recortadas tras pedir el
-## prestamo (adaptacion de "5 misiones", ver comentario de cabecera).
-@export var num_transacciones_recorte: int = 5
 
 @onready var _visual: ColorRect = $Visual
 
