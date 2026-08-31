@@ -1945,6 +1945,208 @@ func confirm_casino_mensaje(mensaje: String) -> void:
 	_status_label.text = mensaje
 
 # =========================================================================
+# Rueda del Clan (H6, tecla Z/K/O/N segun categoria) -- mismo patron
+# submit_/confirm_ que el resto del casino. Sin trampa (ver ruleta.gd).
+# =========================================================================
+
+func _request_girar_ruleta(categoria: String) -> void:
+	submit_girar_ruleta.rpc_id(1, categoria, _apuesta_moneda, _apuesta_monto)
+
+## Apuesta unica por ronda a una categoria de sector (Ruleta.categorias()).
+## El host decide "en rango" y calcula el resultado; RNG autoritativo dentro
+## de ruleta.girar(). Sin Usurero: a diferencia de Vender/Dados, esta tanda
+## no extiende el recorte de deuda a los juegos nuevos (fuera de alcance,
+## ver instrucciones de la tarea -- el Usurero es un sistema ya cerrado).
+@rpc("any_peer", "call_local", "reliable")
+func submit_girar_ruleta(categoria: String, moneda: String, monto: float) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if not Ruleta.categorias().has(categoria):
+		return
+	if moneda != "limpio" and moneda != "manchado":
+		return
+	var ruleta := _find_nearest_ruleta_in_range(CASINO_RANGE)
+	if ruleta == null:
+		confirm_casino_mensaje.rpc("No hay ninguna Rueda del Clan cerca")
+		return
+	if monto < ruleta.apuesta_minima:
+		confirm_casino_mensaje.rpc("La apuesta minima es %.0f" % ruleta.apuesta_minima)
+		return
+	var disponible: float = NetworkManager.dinero_limpio if moneda == "limpio" else NetworkManager.dinero_manchado
+	if disponible < monto:
+		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para esa apuesta" % [monto, moneda])
+		return
+	var resultado := ruleta.girar(categoria)
+	var gano: bool = resultado["gano"]
+	var sector: String = resultado["sector"]
+	var pago: float = resultado["pago"]
+	var delta: float = (monto * pago) - monto if gano else -monto
+	var nuevo_limpio: float = NetworkManager.dinero_limpio
+	var nuevo_manchado: float = NetworkManager.dinero_manchado
+	if moneda == "limpio":
+		nuevo_limpio += delta
+	else:
+		nuevo_manchado += delta
+	confirm_girar_ruleta.rpc(nuevo_limpio, nuevo_manchado, moneda, categoria, sector, gano, monto, pago)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_girar_ruleta(nuevo_limpio: float, nuevo_manchado: float, moneda: String, categoria: String, sector: String, gano: bool, apuesta: float, pago: float) -> void:
+	NetworkManager.dinero_limpio = nuevo_limpio
+	NetworkManager.dinero_manchado = nuevo_manchado
+	var resultado_texto: String
+	if gano:
+		resultado_texto = "GANASTE +%.1f (x%.1f)" % [(apuesta * pago) - apuesta, pago]
+	else:
+		resultado_texto = "perdiste -%.1f" % apuesta
+	_status_label.text = "Ruleta %s (elegiste %s, salio %s): %s" % [moneda, categoria, sector, resultado_texto]
+	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
+
+# =========================================================================
+# Cartas Selladas (H6, tecla 7 juega, mantener 8 usa la trampa de Rayo) --
+# mismo patron submit_/confirm_ que el resto del casino. Ver
+# cartas_selladas.gd para la trampa de Sellos bloqueada.
+# =========================================================================
+
+func _request_jugar_cartas() -> void:
+	var usar_rayo := Input.is_action_pressed("trampa_rayo_cartas")
+	submit_jugar_cartas.rpc_id(1, _apuesta_moneda, _apuesta_monto, usar_rayo)
+
+## Poker simplificado a carta mas alta contra 3 NPC (ver
+## cartas_selladas.gd). `usar_rayo` pide la trampa de Rayo -- adaptacion de
+## "acelerar tu turno y decidir con mas tiempo" a "reparte dos cartas y
+## quedate con la mejor" (sin timer de decision real en este vertical
+## slice, ver comentario de cabecera de cartas_selladas.gd). Sube sospecha
+## igual que la trampa de Viento en la Mesa de Dados.
+@rpc("any_peer", "call_local", "reliable")
+func submit_jugar_cartas(moneda: String, monto: float, usar_rayo: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if moneda != "limpio" and moneda != "manchado":
+		return
+	var mesa := _find_nearest_cartas_selladas_in_range(CASINO_RANGE)
+	if mesa == null:
+		confirm_casino_mensaje.rpc("No hay ninguna mesa de Cartas Selladas cerca")
+		return
+	if monto < mesa.apuesta_minima:
+		confirm_casino_mensaje.rpc("La apuesta minima es %.0f" % mesa.apuesta_minima)
+		return
+	var disponible: float = NetworkManager.dinero_limpio if moneda == "limpio" else NetworkManager.dinero_manchado
+	if disponible < monto:
+		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para esa apuesta" % [monto, moneda])
+		return
+	var peer_id := get_multiplayer_authority()
+	var nuevo_chakra: float = chakra_current
+	var hizo_trampa := false
+	var nueva_sospecha: float = NetworkManager.sospecha_nivel.get(peer_id, 0.0)
+	var nueva_expulsion: float = NetworkManager.sospecha_expulsado_restante.get(peer_id, 0.0)
+	if usar_rayo:
+		if style_data.element_name != "rayo":
+			confirm_casino_mensaje.rpc("Necesitas el estilo Rayo equipado para esa trampa")
+		else:
+			var costo: float = CARTAS_RAYO_CHAKRA_COST * (2.0 if NetworkManager.sospecha_tramo(peer_id) == "ambar" else 1.0)
+			if chakra_current < costo:
+				confirm_casino_mensaje.rpc("No tienes suficiente chakra para acelerar tu turno")
+			else:
+				hizo_trampa = true
+				nuevo_chakra = chakra_current - costo
+				nueva_sospecha = min(NetworkManager.SOSPECHA_MAX, nueva_sospecha + SOSPECHA_POR_TRAMPA_CARTAS)
+				if nueva_sospecha >= NetworkManager.SOSPECHA_ROJO_UMBRAL:
+					nueva_expulsion = NetworkManager.SOSPECHA_DIAS_EXPULSION * NetworkManager.SOSPECHA_SEGUNDOS_POR_DIA
+					nueva_sospecha = 0.0
+	var resultado := mesa.jugar_mano(hizo_trampa)
+	var gano: bool = resultado["gano"]
+	var carta_jugador: int = resultado["carta_jugador"]
+	var mejor_npc: int = resultado["mejor_npc"]
+	var pago: float = resultado["pago"]
+	var delta: float = (monto * pago) - monto if gano else -monto
+	var nuevo_limpio: float = NetworkManager.dinero_limpio
+	var nuevo_manchado: float = NetworkManager.dinero_manchado
+	if moneda == "limpio":
+		nuevo_limpio += delta
+	else:
+		nuevo_manchado += delta
+	confirm_jugar_cartas.rpc(nuevo_limpio, nuevo_manchado, moneda, gano, carta_jugador, mejor_npc, monto, pago, nuevo_chakra, nueva_sospecha, nueva_expulsion, hizo_trampa)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_jugar_cartas(nuevo_limpio: float, nuevo_manchado: float, moneda: String, gano: bool, carta_jugador: int, mejor_npc: int, apuesta: float, pago: float, nuevo_chakra: float, nueva_sospecha: float, nueva_expulsion: float, hizo_trampa: bool) -> void:
+	NetworkManager.dinero_limpio = nuevo_limpio
+	NetworkManager.dinero_manchado = nuevo_manchado
+	chakra_current = nuevo_chakra
+	var peer_id := get_multiplayer_authority()
+	NetworkManager.sospecha_nivel[peer_id] = nueva_sospecha
+	NetworkManager.sospecha_expulsado_restante[peer_id] = nueva_expulsion
+	var resultado_texto: String
+	if gano:
+		resultado_texto = "GANASTE +%.1f" % [(apuesta * pago) - apuesta]
+	else:
+		resultado_texto = "perdiste -%.1f" % apuesta
+	var texto := "Cartas %s (tu %d vs mejor NPC %d): %s" % [moneda, carta_jugador, mejor_npc, resultado_texto]
+	if hizo_trampa:
+		texto += " [Rayo: elegiste tu mejor carta]"
+	_status_label.text = texto
+	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
+
+# =========================================================================
+# Peleas del Sotano (H6, tecla , izquierda / . derecha) -- mismo pool libre
+# que la Mesa de Dados: cualquiera cerca apuesta directo, sin votar. Sin
+# trampa (el brief no menciona ninguna para este juego).
+# =========================================================================
+
+func _request_apostar_pelea(eleccion: String) -> void:
+	submit_apostar_pelea.rpc_id(1, eleccion, _apuesta_moneda, _apuesta_monto)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_apostar_pelea(eleccion: String, moneda: String, monto: float) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if eleccion != "izquierda" and eleccion != "derecha":
+		return
+	if moneda != "limpio" and moneda != "manchado":
+		return
+	var pelea := _find_nearest_peleas_sotano_in_range(CASINO_RANGE)
+	if pelea == null:
+		confirm_casino_mensaje.rpc("No hay ninguna pelea del Sotano cerca")
+		return
+	if monto < pelea.apuesta_minima:
+		confirm_casino_mensaje.rpc("La apuesta minima es %.0f" % pelea.apuesta_minima)
+		return
+	var disponible: float = NetworkManager.dinero_limpio if moneda == "limpio" else NetworkManager.dinero_manchado
+	if disponible < monto:
+		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para esa apuesta" % [monto, moneda])
+		return
+	var resultado := pelea.resolver_apuesta(eleccion)
+	var gano: bool = resultado["gano"]
+	var ganador: String = resultado["ganador"]
+	var pago: float = resultado["pago"]
+	var delta: float = (monto * pago) - monto if gano else -monto
+	var nuevo_limpio: float = NetworkManager.dinero_limpio
+	var nuevo_manchado: float = NetworkManager.dinero_manchado
+	if moneda == "limpio":
+		nuevo_limpio += delta
+	else:
+		nuevo_manchado += delta
+	confirm_apostar_pelea.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, ganador, gano, monto, pago, pelea.nombre_izquierda, pelea.nombre_derecha)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_apostar_pelea(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, ganador: String, gano: bool, apuesta: float, pago: float, nombre_izq: String, nombre_der: String) -> void:
+	NetworkManager.dinero_limpio = nuevo_limpio
+	NetworkManager.dinero_manchado = nuevo_manchado
+	var nombre_ganador := nombre_izq if ganador == "izquierda" else nombre_der
+	var resultado_texto: String
+	if gano:
+		resultado_texto = "GANASTE +%.1f" % [(apuesta * pago) - apuesta]
+	else:
+		resultado_texto = "perdiste -%.1f" % apuesta
+	_status_label.text = "Pelea %s (apostaste %s, gano %s): %s" % [moneda, eleccion, nombre_ganador, resultado_texto]
+	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
+
+# =========================================================================
 # Usurero (H4 recortado a solo esto -- decision explicita del usuario: sin
 # boveda con votacion, revelacion ni Modo Mesa Alta, ver comentario de
 # cabecera de usurero.gd). Mismo patron submit_/confirm_ que el resto del
