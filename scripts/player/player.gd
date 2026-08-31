@@ -176,6 +176,17 @@ const CARTAS_RAYO_CHAKRA_COST := 20.0
 ## forzar un dado ganador siempre.
 const SOSPECHA_POR_TRAMPA_DADOS := 15.0
 const SOSPECHA_POR_TRAMPA_CARTAS := 10.0
+## Fichas ganadas por partida de casino (H6, brief "Tres monedas": "solo se
+## ganan jugando", sin mas detalle). Decision propia: se reparte SIEMPRE algo,
+## menos al perder que al ganar -- si solo se repartiera al ganar, comprar
+## pergaminos dependeria enteramente de rachas de suerte en las apuestas, y
+## las fichas dejarian de sentirse como recompensa por "jugar" (texto del
+## brief) para sentirse como recompensa por "ganar" (mas estricto de lo que
+## pide). Mismos 4 juegos que ya reparten dinero limpio/manchado: Mesa de
+## Dados, Rueda del Clan, Cartas Selladas, Peleas del Sotano -- no crea
+## ningun juego nuevo, solo engancha su resultado ya calculado.
+const FICHAS_POR_GANAR := 5.0
+const FICHAS_POR_PERDER := 1.0
 ## Peso del botin (brief H2 tarea 4): cada cadaver cargado resta velocidad.
 ## MIN_CARGA_SPEED_RATIO evita que cargar el maximo te deje casi inmovil --
 ## seria un castigo, no una decision interesante.
@@ -575,7 +586,8 @@ func _handle_aim() -> void:
 ## confirm_vender/confirm_cambiar_dinero/confirm_apostar_dados -- este Label
 ## solo lee su valor actual cada frame, no necesita señal ni RPC propio.
 func _update_money_label() -> void:
-	var texto := "Manchado: %.0f  |  Limpio: %.0f" % [NetworkManager.dinero_manchado, NetworkManager.dinero_limpio]
+	var peer_id_hud := get_multiplayer_authority()
+	var texto := "Manchado: %.0f  |  Limpio: %.0f  |  Fichas: %.0f" % [NetworkManager.dinero_manchado, NetworkManager.dinero_limpio, NetworkManager.fichas.get(peer_id_hud, 0.0)]
 	# Aviso visible de deuda con el Usurero: en NEGATIVO (pedido explicito
 	# del usuario), mismo Label de dinero -- reutilizado en vez de crear un
 	# tercer Label solo para esto.
@@ -2091,10 +2103,12 @@ func submit_apostar_dados(eleccion: String, moneda: String, monto: float, trampa
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, monto, recorte_usurero, nueva_deuda, nuevo_chakra, nueva_sospecha, nueva_expulsion, hizo_trampa)
+	var fichas_ganadas: float = FICHAS_POR_GANAR if gano else FICHAS_POR_PERDER
+	var nuevas_fichas: float = NetworkManager.fichas.get(peer_id, 0.0) + fichas_ganadas
+	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, monto, recorte_usurero, nueva_deuda, nuevo_chakra, nueva_sospecha, nueva_expulsion, hizo_trampa, fichas_ganadas, nuevas_fichas)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, nueva_deuda: float, nuevo_chakra: float, nueva_sospecha: float, nueva_expulsion: float, hizo_trampa: bool) -> void:
+func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float, recorte_usurero: float, nueva_deuda: float, nuevo_chakra: float, nueva_sospecha: float, nueva_expulsion: float, hizo_trampa: bool, fichas_ganadas: float, nuevas_fichas: float) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
 	NetworkManager.dinero_manchado = nuevo_manchado
 	NetworkManager.usurero_deuda_pendiente = nueva_deuda
@@ -2102,6 +2116,7 @@ func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: S
 	var peer_id := get_multiplayer_authority()
 	NetworkManager.sospecha_nivel[peer_id] = nueva_sospecha
 	NetworkManager.sospecha_expulsado_restante[peer_id] = nueva_expulsion
+	NetworkManager.fichas[peer_id] = nuevas_fichas
 	var resultado_texto: String
 	if gano:
 		resultado_texto = "GANASTE +%.1f" % (apuesta - recorte_usurero)
@@ -2109,7 +2124,7 @@ func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: S
 			resultado_texto += " (recorte Usurero -%.1f, deuda restante: -%.0f)" % [recorte_usurero, nueva_deuda]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
-	var texto := "Dados %s (%s, cara %d): %s" % [moneda, eleccion, cara, resultado_texto]
+	var texto := "Dados %s (%s, cara %d): %s (+%.0f fichas)" % [moneda, eleccion, cara, resultado_texto, fichas_ganadas]
 	if hizo_trampa:
 		texto += " [Viento: dado forzado]"
 	print("[Dados] Apostaste %s a %s, salio cara %d -> %s (limpio: %.1f, manchado: %.1f)" % [moneda, eleccion, cara, resultado_texto, nuevo_limpio, nuevo_manchado])
@@ -2169,18 +2184,23 @@ func submit_girar_ruleta(categoria: String, moneda: String, monto: float) -> voi
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_girar_ruleta.rpc(nuevo_limpio, nuevo_manchado, moneda, categoria, sector, gano, monto, pago)
+	var peer_id := get_multiplayer_authority()
+	var fichas_ganadas: float = FICHAS_POR_GANAR if gano else FICHAS_POR_PERDER
+	var nuevas_fichas: float = NetworkManager.fichas.get(peer_id, 0.0) + fichas_ganadas
+	confirm_girar_ruleta.rpc(nuevo_limpio, nuevo_manchado, moneda, categoria, sector, gano, monto, pago, fichas_ganadas, nuevas_fichas)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_girar_ruleta(nuevo_limpio: float, nuevo_manchado: float, moneda: String, categoria: String, sector: String, gano: bool, apuesta: float, pago: float) -> void:
+func confirm_girar_ruleta(nuevo_limpio: float, nuevo_manchado: float, moneda: String, categoria: String, sector: String, gano: bool, apuesta: float, pago: float, fichas_ganadas: float, nuevas_fichas: float) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
 	NetworkManager.dinero_manchado = nuevo_manchado
+	var peer_id := get_multiplayer_authority()
+	NetworkManager.fichas[peer_id] = nuevas_fichas
 	var resultado_texto: String
 	if gano:
 		resultado_texto = "GANASTE +%.1f (x%.1f)" % [(apuesta * pago) - apuesta, pago]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
-	_status_label.text = "Ruleta %s (elegiste %s, salio %s): %s" % [moneda, categoria, sector, resultado_texto]
+	_status_label.text = "Ruleta %s (elegiste %s, salio %s): %s (+%.0f fichas)" % [moneda, categoria, sector, resultado_texto, fichas_ganadas]
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
 # =========================================================================
@@ -2249,22 +2269,25 @@ func submit_jugar_cartas(moneda: String, monto: float, usar_rayo: bool) -> void:
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_jugar_cartas.rpc(nuevo_limpio, nuevo_manchado, moneda, gano, carta_jugador, mejor_npc, monto, pago, nuevo_chakra, nueva_sospecha, nueva_expulsion, hizo_trampa)
+	var fichas_ganadas: float = FICHAS_POR_GANAR if gano else FICHAS_POR_PERDER
+	var nuevas_fichas: float = NetworkManager.fichas.get(peer_id, 0.0) + fichas_ganadas
+	confirm_jugar_cartas.rpc(nuevo_limpio, nuevo_manchado, moneda, gano, carta_jugador, mejor_npc, monto, pago, nuevo_chakra, nueva_sospecha, nueva_expulsion, hizo_trampa, fichas_ganadas, nuevas_fichas)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_jugar_cartas(nuevo_limpio: float, nuevo_manchado: float, moneda: String, gano: bool, carta_jugador: int, mejor_npc: int, apuesta: float, pago: float, nuevo_chakra: float, nueva_sospecha: float, nueva_expulsion: float, hizo_trampa: bool) -> void:
+func confirm_jugar_cartas(nuevo_limpio: float, nuevo_manchado: float, moneda: String, gano: bool, carta_jugador: int, mejor_npc: int, apuesta: float, pago: float, nuevo_chakra: float, nueva_sospecha: float, nueva_expulsion: float, hizo_trampa: bool, fichas_ganadas: float, nuevas_fichas: float) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
 	NetworkManager.dinero_manchado = nuevo_manchado
 	chakra_current = nuevo_chakra
 	var peer_id := get_multiplayer_authority()
 	NetworkManager.sospecha_nivel[peer_id] = nueva_sospecha
 	NetworkManager.sospecha_expulsado_restante[peer_id] = nueva_expulsion
+	NetworkManager.fichas[peer_id] = nuevas_fichas
 	var resultado_texto: String
 	if gano:
 		resultado_texto = "GANASTE +%.1f" % [(apuesta * pago) - apuesta]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
-	var texto := "Cartas %s (tu %d vs mejor NPC %d): %s" % [moneda, carta_jugador, mejor_npc, resultado_texto]
+	var texto := "Cartas %s (tu %d vs mejor NPC %d): %s (+%.0f fichas)" % [moneda, carta_jugador, mejor_npc, resultado_texto, fichas_ganadas]
 	if hizo_trampa:
 		texto += " [Rayo: elegiste tu mejor carta]"
 	_status_label.text = texto
@@ -2311,19 +2334,24 @@ func submit_apostar_pelea(eleccion: String, moneda: String, monto: float) -> voi
 		nuevo_limpio += delta
 	else:
 		nuevo_manchado += delta
-	confirm_apostar_pelea.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, ganador, gano, monto, pago, pelea.nombre_izquierda, pelea.nombre_derecha)
+	var peer_id := get_multiplayer_authority()
+	var fichas_ganadas: float = FICHAS_POR_GANAR if gano else FICHAS_POR_PERDER
+	var nuevas_fichas: float = NetworkManager.fichas.get(peer_id, 0.0) + fichas_ganadas
+	confirm_apostar_pelea.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, ganador, gano, monto, pago, pelea.nombre_izquierda, pelea.nombre_derecha, fichas_ganadas, nuevas_fichas)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_apostar_pelea(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, ganador: String, gano: bool, apuesta: float, pago: float, nombre_izq: String, nombre_der: String) -> void:
+func confirm_apostar_pelea(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, ganador: String, gano: bool, apuesta: float, pago: float, nombre_izq: String, nombre_der: String, fichas_ganadas: float, nuevas_fichas: float) -> void:
 	NetworkManager.dinero_limpio = nuevo_limpio
 	NetworkManager.dinero_manchado = nuevo_manchado
+	var peer_id := get_multiplayer_authority()
+	NetworkManager.fichas[peer_id] = nuevas_fichas
 	var nombre_ganador := nombre_izq if ganador == "izquierda" else nombre_der
 	var resultado_texto: String
 	if gano:
 		resultado_texto = "GANASTE +%.1f" % [(apuesta * pago) - apuesta]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
-	_status_label.text = "Pelea %s (apostaste %s, gano %s): %s" % [moneda, eleccion, nombre_ganador, resultado_texto]
+	_status_label.text = "Pelea %s (apostaste %s, gano %s): %s (+%.0f fichas)" % [moneda, eleccion, nombre_ganador, resultado_texto, fichas_ganadas]
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
 # =========================================================================
