@@ -53,3 +53,15 @@ func resolver_tirada(eleccion: String) -> Dictionary:
 	var cara := randi_range(CARA_BAJO, CARA_ALTO)
 	var gano := (cara == CARA_BAJO and eleccion == "bajo") or (cara == CARA_ALTO and eleccion == "alto")
 	return {"cara": cara, "gano": gano}
+
+## Trampa retroactiva de Viento (H6, brief 2.3/diseno "El casino"): mantener
+## una tecla usa Viento para "empujar" un dado justo antes de que pare. Ya
+## no hay azar que resolver -- el resultado se fuerza a la cara que coincide
+## con tu eleccion. Sigue viviendo aqui (no en player.gd) por el mismo
+## motivo que resolver_tirada() de arriba: la logica de resultado de la mesa
+## vive en el nodo de la mesa; player.gd (submit_apostar_dados) solo decide
+## SI se puede usar (estilo Viento equipado, chakra suficiente) y llama a
+## esta version en vez de la normal.
+func resolver_tirada_forzada(eleccion: String) -> Dictionary:
+	var cara := CARA_BAJO if eleccion == "bajo" else CARA_ALTO
+	return {"cara": cara, "gano": true}

@@ -5,6 +5,9 @@
 [ext_resource type="PackedScene" path="res://scenes/economy/cambista.tscn" id="3_cambista"]
 [ext_resource type="PackedScene" path="res://scenes/economy/mesa_dados.tscn" id="4_mesa_dados"]
 [ext_resource type="PackedScene" path="res://scenes/economy/usurero.tscn" id="5_usurero"]
+[ext_resource type="PackedScene" path="res://scenes/economy/ruleta.tscn" id="6_ruleta"]
+[ext_resource type="PackedScene" path="res://scenes/economy/cartas_selladas.tscn" id="7_cartas_selladas"]
+[ext_resource type="PackedScene" path="res://scenes/economy/peleas_sotano.tscn" id="8_peleas_sotano"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1024, 32)
@@ -139,3 +142,12 @@ position = Vector2(900, 650)
 
 [node name="Usurero" parent="Casino" instance=ExtResource("5_usurero")]
 position = Vector2(512, 650)
+
+[node name="Ruleta" parent="Casino" instance=ExtResource("6_ruleta")]
+position = Vector2(120, 480)
+
+[node name="CartasSelladas" parent="Casino" instance=ExtResource("7_cartas_selladas")]
+position = Vector2(512, 480)
+
+[node name="PeleasSotano" parent="Casino" instance=ExtResource("8_peleas_sotano")]
+position = Vector2(900, 480)
