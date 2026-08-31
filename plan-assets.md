@@ -31,8 +31,10 @@ Por eso este documento marca cada bloque como 🟡 *placeholder ya* o 🟢 *fina
 | Parámetro | Propuesta | Notas |
 |---|---|---|
 | Estilo | Pixel art, personajes/entorno en perspectiva tres cuartos (~60°); Zonas de suelo en plano cenital | Coherente en todo el juego, luz de tarde/noche predominante |
-| Tamaño de tile de entorno | 32×32 px (ajustable) | Confirmar con quien monte los tilesets en Godot |
-| Canvas de personaje por capa | 64×64 o 96×96 px | Debe dejar margen para que armas/efectos sobresalgan del cuerpo |
+| Tamaño de tile de entorno | 32×32 px | Bloque base de suelo/pared |
+| Canvas de personaje por capa | 32×48 px | Mantiene el ancho del bloque (32) pero más alto para proporciones humanas (cabeza/torso/piernas) |
+| Iconos de inventario | 16×16 px | Objetos pequeños (llaves, limas, comida) para caber en menús sin tapar pantalla |
+| Muebles y objetos grandes | 32×64 o 64×64 px | Mesas largas, camas, carros — combinan varios bloques |
 | Animación | 8–12 fps | Estándar de pixel art, no busca fluidez tipo anime |
 | Formato fuente | Aseprite (`.aseprite`) | Permite exportar spritesheet y capas por separado fácilmente |
 | Formato de entrega a Godot | PNG (spritesheet o frames sueltos) + el `.aseprite` original | El programador importa desde ahí |

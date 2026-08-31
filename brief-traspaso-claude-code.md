@@ -23,7 +23,7 @@ Si el usuario no responde alguna, asume Godot 4, un desarrollador, y vertical sl
 
 ## 1. Qué es el juego
 
-Acción cooperativa para 2–4 jugadores, pixel art (sprites 32x32 px), cámara en tres cuartos (~60°), control twin-stick con teclado y ratón. Modo historia. Ambientación: ninjas en una aldea portuaria en decadencia que sobrevive del contrabando.
+Acción cooperativa para 2–4 jugadores, pixel art (tiles 32x32 px, personajes 32x48 px, iconos 16x16 px, muebles/objetos grandes 32x64 o 64x64 px), cámara en tres cuartos (~60°), control twin-stick con teclado y ratón. Modo historia. Ambientación: ninjas en una aldea portuaria en decadencia que sobrevive del contrabando.
 
 **Bucle central:**
 Pelea limpia → vendes el cuerpo del enemigo → cambias el dinero manchado en el casino → compras técnicas → peleas mejor.

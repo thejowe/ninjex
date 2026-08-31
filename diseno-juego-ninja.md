@@ -3,7 +3,7 @@
 Acción cooperativa 2–4 jugadores · pixel art tres cuartos · modo historia
 Aldea portuaria en decadencia · ninjas, cadáveres y un casino
 
-**Resolución de arte: sprites 32x32 px.**
+**Resolución de arte:** tiles de entorno 32×32 px · personajes 32×48 px · iconos de inventario 16×16 px · muebles/objetos grandes 32×64 o 64×64 px.
 
 ---
 

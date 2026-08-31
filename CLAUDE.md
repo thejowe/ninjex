@@ -5,7 +5,11 @@ Ver `brief-traspaso-claude-code.md`, `diseno-juego-ninja.md` y `plan-desarrollo.
 
 ## Estilo visual
 
-- **Pixel art, sprites de 32x32 px.** Cualquier asset, sprite sheet, mockup o herramienta de generación de arte debe respetar esta resolución.
+- **Pixel art.** Tamaños de canvas (ver `plan-assets.md` sección 1 para el detalle completo):
+  - Tiles de entorno (suelo/pared): 32×32 px
+  - Personajes (por capa: legs/torso/fx): 32×48 px
+  - Iconos de inventario: 16×16 px
+  - Muebles y objetos grandes: 32×64 o 64×64 px
 - Cámara en tres cuartos (~60°).
 - Sprite de personaje en 3 capas: `legs` (dirección de movimiento), `torso` (rota con el cursor), `fx` (efecto elemental, sprite independiente).
 - No producir arte final antes de cerrar el combate (H1) — hasta entonces, placeholder.
