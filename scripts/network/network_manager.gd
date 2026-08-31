@@ -19,7 +19,10 @@ var effects_root: Node = null
 var spawn_points: Array[Node2D] = []
 
 func host_game() -> void:
-	if multiplayer.multiplayer_peer != null:
+	# multiplayer.multiplayer_peer NUNCA es null por defecto: Godot le pone un
+	# OfflineMultiplayerPeer de por si. Comprobar "!= null" no detecta ese caso
+	# y por tanto nunca deja pasar la primera llamada real.
+	if not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
 		return
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(PORT, MAX_PLAYERS)
