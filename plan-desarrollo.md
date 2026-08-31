@@ -10,13 +10,14 @@
 | Decisión | Respuesta |
 |---|---|
 | Motor | **Godot 4** |
-| Equipo y tiempo | **Un desarrollador en solitario**, arte propio o comprado |
+| Equipo y tiempo | **Un desarrollador en solitario** para código, **+ una persona dedicada a assets** (actualización: ya no es arte 100% comprado/propio del programador — ver `plan-assets.md`) |
 | Alcance inmediato | **Vertical slice jugable** (H1→H4 como compromiso firme; H5-H6 planificados pero no prometidos aún) |
 
 Consecuencias directas de estas respuestas:
 - Estructura de proyecto en GDScript, escenas `.tscn`, `MultiplayerAPI` de alto nivel de Godot para red.
-- Como es un desarrollador solo, las tareas están ordenadas para que **cada hito sea jugable por sí mismo** antes de seguir — no hay margen para trabajar en paralelo en sistemas que no se validan.
-- No se produce arte final hasta que el combate de H1 esté cerrado (regla del brief, sección 6).
+- Las tareas de código están ordenadas para que **cada hito sea jugable por sí mismo** antes de seguir — no hay margen para trabajar en paralelo en sistemas de código que no se validan.
+- **Actualización de equipo:** el brief avisaba que "si hay más gente o un artista, el orden de tareas cambia". Al sumar una persona de assets, el trabajo de arte deja de depender 100% del código: puede avanzar guía de estilo, concept art y placeholders en paralelo a H1, y arte final se sincroniza con `plan-desarrollo.md` fase a fase. El detalle completo del trabajo de assets está en `plan-assets.md`.
+- No se produce arte **final** (pulido) hasta que el combate de H1 esté cerrado y validado (regla del brief, sección 6) — pero sí se produce placeholder funcional, guía de estilo y concept art desde el principio, para no dejar a la persona de assets parada.
 
 ---
 
