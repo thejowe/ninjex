@@ -81,6 +81,20 @@ var _puertas_tiempo_abierto_total: float = 0.0
 var _vulnerabilidad_restante: float = 0.0
 var _vulnerabilidad_multiplicador: float = 1.0
 
+# --- Potenciador (E) -- recibido de un aliado, nunca de uno mismo ---
+## "" = sin buff activo, o "fuego"/"viento" segun quien lo lanzo.
+var _potenciador_active_element: String = ""
+var _potenciador_time_remaining: float = 0.0
+## Peer id de quien lo lanzo. Se usa para el bonus de Fisico (devolver
+## chakra tras un Agarre exitoso).
+var _potenciador_caster_id: int = 0
+## Bonus de dano del Basico mientras el buff de Fuego este activo.
+var _potenciador_damage_bonus: float = 0.0
+var _potenciador_dash_active_time: float = 0.0
+var _potenciador_dash_total_time: float = 0.0
+var _potenciador_dash_from: Vector2
+var _potenciador_dash_to: Vector2
+
 func _ready() -> void:
 	if style_data == null:
 		style_data = load(DEFAULT_STYLE_PATH)
@@ -108,6 +122,11 @@ func _apply_style_reset() -> void:
 	_impulse_cooldown_remaining = 0.0
 	_impulse_active_time = 0.0
 	_collision_ignore_remaining = 0.0
+	_potenciador_active_element = ""
+	_potenciador_time_remaining = 0.0
+	_potenciador_caster_id = 0
+	_potenciador_damage_bonus = 0.0
+	_potenciador_dash_active_time = 0.0
 	set_collision_mask_value(1, true)
 	if _zone_preview != null:
 		_zone_preview.queue_free()
@@ -122,7 +141,9 @@ func _physics_process(delta: float) -> void:
 		_handle_vulnerability(delta)
 		_handle_impulse_cooldown(delta)
 		_handle_collision_ignore(delta)
+		_handle_potenciador_timer(delta)
 		_process_impulse_motion(delta)
+		_process_potenciador_dash(delta)
 		_handle_movement()
 		_handle_aim()
 		if style_data.melee_only:
@@ -138,12 +159,14 @@ func _physics_process(delta: float) -> void:
 				_request_projectile_attack()
 		if Input.is_action_just_pressed("impulse") and _impulse_cooldown_remaining <= 0.0 and _impulse_active_time <= 0.0:
 			_request_impulse()
+		if Input.is_action_just_pressed("potenciador") and not style_data.melee_only:
+			_request_potenciador()
 	move_and_slide()
 
 func _handle_movement() -> void:
-	if _impulse_active_time > 0.0:
-		# El Impulso mueve al jugador directamente por posicion (ver
-		# _process_impulse_motion); el WASD no debe pelearse con el dash.
+	if _impulse_active_time > 0.0 or _potenciador_dash_active_time > 0.0:
+		# El Impulso (y el dash del Potenciador de Viento) mueven al jugador
+		# directamente por posicion; el WASD no debe pelearse con el dash.
 		velocity = Vector2.ZERO
 		return
 	var input_dir := Vector2(
@@ -182,6 +205,25 @@ func _handle_collision_ignore(delta: float) -> void:
 		if _collision_ignore_remaining <= 0.0:
 			set_collision_mask_value(1, true)
 
+## Prediccion local (igual que el resto de timers de estado): cuenta atras
+## del buff recibido. No hace falta ir al host, solo apaga el flag local.
+func _handle_potenciador_timer(delta: float) -> void:
+	if _potenciador_time_remaining > 0.0:
+		_potenciador_time_remaining -= delta
+		if _potenciador_time_remaining <= 0.0:
+			_potenciador_active_element = ""
+			_potenciador_caster_id = 0
+			_potenciador_damage_bonus = 0.0
+
+func _process_potenciador_dash(delta: float) -> void:
+	if _potenciador_dash_active_time <= 0.0:
+		return
+	_potenciador_dash_active_time -= delta
+	var t: float = 1.0 - clamp(_potenciador_dash_active_time / max(_potenciador_dash_total_time, 0.001), 0.0, 1.0)
+	global_position = _potenciador_dash_from.lerp(_potenciador_dash_to, t)
+	if _potenciador_dash_active_time <= 0.0:
+		global_position = _potenciador_dash_to
+
 ## Ayuda de playtest solo local (no pasa por red): cambia style_data del
 ## propio jugador. Ver comentario de cabecera.
 func _handle_debug_style_switch() -> void:
@@ -206,10 +248,8 @@ func _current_damage_multiplier() -> float:
 		return 1.0
 	return 1.0 + puertas_nivel * style_data.puertas_damage_multiplier_per_level
 
-## HOOK para el Potenciador (tarea futura, no implementada en esta tanda):
-## con las Puertas abiertas, cualquier Potenciador que este jugador reciba
-## debe durar el doble. Cuando exista el Potenciador, multiplicar su
-## duracion base por lo que devuelva esta funcion.
+## Con las Puertas abiertas, cualquier Potenciador que este jugador reciba
+## dura el doble. Usado por submit_potenciador() del que lo lanza.
 func potenciador_duration_multiplier() -> float:
 	if style_data.melee_only and puertas_nivel > 0:
 		return style_data.puertas_potenciador_duration_multiplier
@@ -242,6 +282,23 @@ func _find_enemies_in_cone(range_max: float, cone_degrees: float, facing_dir: Ve
 			continue
 		if abs(facing_dir.angle_to(to_enemy)) <= half_angle:
 			result.append(enemigo)
+	return result
+
+## Igual que _find_enemies_in_cone pero sobre el grupo de jugadores,
+## excluyendose a si mismo -- el Potenciador nunca se lo lanza uno a si
+## mismo (brief 2.1).
+func _find_allies_in_cone(range_max: float, cone_degrees: float, facing_dir: Vector2) -> Array:
+	var result: Array = []
+	var half_angle: float = deg_to_rad(cone_degrees * 0.5)
+	for jugador in get_tree().get_nodes_in_group(GRUPO_JUGADORES):
+		if jugador == self or not (jugador is Node2D):
+			continue
+		var to_ally: Vector2 = jugador.global_position - global_position
+		var dist: float = to_ally.length()
+		if dist > range_max or dist < 0.001:
+			continue
+		if abs(facing_dir.angle_to(to_ally)) <= half_angle:
+			result.append(jugador)
 	return result
 
 func _get_grabbed_enemy() -> EnemigoSimple:
@@ -292,6 +349,11 @@ func submit_basic_attack(aim_point: Vector2) -> void:
 	var targets := _find_enemies_in_cone(style_data.basic_range, style_data.basic_cone_degrees, facing_dir)
 	var damage_type := _basic_damage_type()
 	var damage: float = style_data.basic_damage * _current_damage_multiplier()
+	# Potenciador de Fuego recibido: puños ardientes -- bonus de dano y
+	# fuerza el tipo "quemadura" aunque el propio estilo sea otro.
+	if _potenciador_active_element == "fuego":
+		damage += _potenciador_damage_bonus
+		damage_type = "quemadura"
 	for enemigo in targets:
 		if enemigo.has_method("recibir_daño"):
 			enemigo.recibir_daño(damage_type, damage)
@@ -387,15 +449,30 @@ func submit_grab_attempt() -> void:
 		if d < best_dist:
 			best_dist = d
 			target = c
-	confirm_grab.rpc(target.get_path())
+	# Bonus de Fisico (brief 2.1): tras un Agarre exitoso con un Potenciador
+	# activo, devuelve chakra al aliado que lo lanzo y consume el buff.
+	var consume_potenciador := false
+	if style_data.melee_only and _potenciador_active_element != "" and _potenciador_caster_id != 0:
+		var caster: Node = null
+		if NetworkManager.players_root != null:
+			caster = NetworkManager.players_root.get_node_or_null(str(_potenciador_caster_id))
+		if caster != null and caster.has_method("confirm_potenciador_chakra_return"):
+			var new_caster_chakra: float = min(caster.chakra_current + style_data.potenciador_grab_chakra_return, caster.style_data.chakra_max)
+			caster.confirm_potenciador_chakra_return.rpc(new_caster_chakra)
+			consume_potenciador = true
+	confirm_grab.rpc(target.get_path(), consume_potenciador)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_grab(path: NodePath) -> void:
+func confirm_grab(path: NodePath, consume_potenciador: bool) -> void:
 	var target := get_node_or_null(path) as EnemigoSimple
 	if target == null or not is_instance_valid(target):
 		return
 	target.agarrado_por = self
 	grabbed_enemy_path = path
+	if consume_potenciador:
+		_potenciador_active_element = ""
+		_potenciador_caster_id = 0
+		_potenciador_damage_bonus = 0.0
 	if multiplayer.is_server():
 		_schedule_grab_release(target, style_data.grab_hold_duration)
 
@@ -668,6 +745,93 @@ func confirm_puertas_close(vulnerabilidad_segundos: float) -> void:
 	_puertas_tiempo_abierto_total = 0.0
 	_vulnerabilidad_restante = vulnerabilidad_segundos
 	_vulnerabilidad_multiplicador = style_data.puertas_vulnerability_damage_multiplier
+
+# =========================================================================
+# Potenciador -- E. Se lanza sobre un aliado, nunca sobre uno mismo. Solo
+# Fuego/Viento tienen chakra para lanzarlo (Fisico no tiene Potenciador
+# propio, brief 2.1); Fisico si puede RECIBIRLO -- ver bonus en Agarre.
+# =========================================================================
+
+func _request_potenciador() -> void:
+	submit_potenciador.rpc_id(1)
+
+## El host busca el aliado mas cercano en el mismo cono que ya usa el
+## Agarre (autoapuntado suave); el cliente no elige el objetivo, solo pide
+## la accion, igual que el resto del kit.
+@rpc("any_peer", "call_local", "reliable")
+func submit_potenciador() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if style_data.melee_only:
+		return
+	if chakra_current < style_data.potenciador_chakra_cost:
+		return
+	var facing_dir: Vector2 = Vector2.RIGHT.rotated(_torso.rotation)
+	var candidates := _find_allies_in_cone(style_data.potenciador_range, style_data.potenciador_cone_degrees, facing_dir)
+	if candidates.is_empty():
+		return
+	var target: Node2D = candidates[0]
+	var best_dist: float = global_position.distance_to(target.global_position)
+	for c in candidates:
+		var d: float = global_position.distance_to(c.global_position)
+		if d < best_dist:
+			best_dist = d
+			target = c
+	var new_chakra: float = chakra_current - style_data.potenciador_chakra_cost
+	var duration: float = style_data.potenciador_duration
+	if target.has_method("potenciador_duration_multiplier"):
+		duration *= target.potenciador_duration_multiplier()
+	var damage_bonus := 0.0
+	var dash_distance := 0.0
+	var dash_travel_time := 0.0
+	if style_data.element_name == "fuego":
+		damage_bonus = style_data.potenciador_fuego_damage_bonus
+	elif style_data.element_name == "viento":
+		dash_distance = style_data.potenciador_viento_dash_distance
+		dash_travel_time = style_data.potenciador_viento_dash_travel_time
+	confirm_potenciador_cast.rpc(new_chakra)
+	# RPC sobre OTRO nodo replicado (el objetivo, no self) -- mismo truco que
+	# ya usa el Agarre/Lanzamiento para aplicar el resultado donde toca.
+	target.confirm_potenciador_received.rpc(style_data.element_name, duration, get_multiplayer_authority(), damage_bonus, dash_distance, dash_travel_time, global_position)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_potenciador_cast(new_chakra: float) -> void:
+	chakra_current = new_chakra
+
+## Se ejecuta en el jugador OBJETIVO (no en quien lo lanzo). caster_pos es
+## la posicion del que lo lanzo en el momento del cast, usada solo por el
+## dash de Viento.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_potenciador_received(element: String, duration: float, caster_id: int, damage_bonus: float, dash_distance: float, dash_travel_time: float, caster_pos: Vector2) -> void:
+	_potenciador_active_element = element
+	_potenciador_time_remaining = duration
+	_potenciador_caster_id = caster_id
+	_potenciador_damage_bonus = damage_bonus
+	if element == "viento" and dash_distance > 0.0:
+		_start_potenciador_dash(caster_pos, dash_distance, dash_travel_time)
+
+## Viento: dash instantaneo hacia quien lanzo el Potenciador (cierra
+## distancia volando). Se detiene un poco antes de llegar encima del
+## aliado en vez de solaparse con el.
+func _start_potenciador_dash(caster_pos: Vector2, distance: float, travel_time: float) -> void:
+	var to_caster: Vector2 = caster_pos - global_position
+	var dist: float = to_caster.length()
+	if dist < 1.0:
+		return
+	var dir: Vector2 = to_caster / dist
+	var travel_dist: float = min(distance, max(dist - 20.0, 0.0))
+	if travel_dist <= 0.0:
+		return
+	_potenciador_dash_from = global_position
+	_potenciador_dash_to = global_position + dir * travel_dist
+	_potenciador_dash_total_time = travel_time
+	_potenciador_dash_active_time = travel_time
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_potenciador_chakra_return(new_chakra: float) -> void:
+	chakra_current = new_chakra
 
 # =========================================================================
 # Vida / danio entrante.

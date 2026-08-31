@@ -36,6 +36,21 @@ func host_game() -> void:
 	# sin esperar a peer_connected (esa senal no llega para uno mismo).
 	_spawn_player(1)
 
+func join_game(ip: String) -> void:
+	if not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
+		return
+	var peer := ENetMultiplayerPeer.new()
+	var err := peer.create_client(ip, PORT)
+	if err != OK:
+		push_error("NetworkManager: no se pudo crear el cliente hacia %s (error %s)" % [ip, err])
+		return
+	multiplayer.multiplayer_peer = peer
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	# No se spawnea aqui: el host detecta la conexion via peer_connected y
+	# llama a _spawn_player, que replica al nuevo jugador a todos los peers
+	# (incluido este cliente) via el MultiplayerSpawner.
+
 func _on_peer_connected(id: int) -> void:
 	if multiplayer.is_server():
 		_spawn_player(id)

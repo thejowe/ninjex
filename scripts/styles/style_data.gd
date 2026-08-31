@@ -115,5 +115,28 @@ class_name StyleData
 ## implementada en esta tanda) -- ver Player.potenciador_duration_multiplier().
 @export var puertas_potenciador_duration_multiplier: float = 2.0
 
+@export_group("Potenciador")
+## Duracion base del Potenciador (segundos). Se multiplica x
+## potenciador_duration_multiplier() del objetivo si tiene Puertas abiertas.
+@export var potenciador_duration: float = 8.0
+## Coste de chakra para lanzarlo. No se usa si melee_only (el Fisico no
+## tiene Potenciador propio, ver brief 2.1).
+@export var potenciador_chakra_cost: float = 25.0
+## Alcance y semiangulo (grados) del cono frente al jugador para elegir el
+## aliado mas cercano al que lanzarlo. Mismo patron que grab_range/cone.
+@export var potenciador_range: float = 110.0
+@export var potenciador_cone_degrees: float = 50.0
+## Fuego: mientras el buff este activo, cada golpe de Basico del objetivo
+## suma este bonus de dano y se fuerza el tipo "quemadura".
+@export var potenciador_fuego_damage_bonus: float = 5.0
+## Viento: dash instantaneo del objetivo hacia el que lanza el Potenciador
+## al conectar (cierra distancia). Mismo mecanismo que el Impulso propio.
+@export var potenciador_viento_dash_distance: float = 220.0
+@export var potenciador_viento_dash_travel_time: float = 0.22
+## Fisico (solo melee_only): si el objetivo tiene un Potenciador activo (de
+## cualquier elemento) y consigue un Agarre, devuelve esta chakra al peer
+## que se lo lanzo, y consume el buff.
+@export var potenciador_grab_chakra_return: float = 20.0
+
 @export_group("Vida")
 @export var vida_maxima: float = 100.0
