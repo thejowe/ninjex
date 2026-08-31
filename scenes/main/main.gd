@@ -7,4 +7,5 @@ extends Node2D
 func _ready() -> void:
 	NetworkManager.players_root = $Players
 	NetworkManager.effects_root = $Effects
+	NetworkManager.spawn_points.assign($TestRoom/PlayerSpawns.get_children())
 	NetworkManager.host_game()

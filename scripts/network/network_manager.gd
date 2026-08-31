@@ -12,6 +12,11 @@ const MAX_PLAYERS := 4 # tope de diseno del juego completo (2-4 jugadores)
 ## Asignados por main.gd en _ready() antes de llamar a host_game().
 var players_root: Node = null
 var effects_root: Node = null
+## Puntos de spawn de jugadores del mapa actual (Marker2D). Si esta vacio,
+## los jugadores caen en (0,0) -- eso es lo que pasaba antes de fijar esto:
+## (0,0) es la esquina de la sala de pruebas, la camara se centraba ahi y
+## la mayor parte de la pantalla quedaba fuera de la sala (se veia vacio).
+var spawn_points: Array[Node2D] = []
 
 func host_game() -> void:
 	if multiplayer.multiplayer_peer != null:
@@ -53,3 +58,10 @@ func _spawn_player(id: int) -> void:
 	# lista de escenas auto-spawneables).
 	players_root.add_child(player, true)
 	player.set_multiplayer_authority(id)
+	player.global_position = _spawn_position_for(id)
+
+func _spawn_position_for(id: int) -> Vector2:
+	if spawn_points.is_empty():
+		return Vector2.ZERO
+	var index := (id - 1) % spawn_points.size()
+	return spawn_points[index].global_position
