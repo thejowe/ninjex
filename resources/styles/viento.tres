@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="StyleData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/styles/style_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+style_name = "Viento"
+element_name = "viento"
+melee_only = false
+chakra_max = 100.0
+chakra_recovered_per_hit = 12.0
+basic_damage = 7.0
+basic_range = 90.0
+basic_cone_degrees = 70.0
+basic_combo_window = 0.6
+basic_tag_duration = 1.5
+projectile_chakra_cost = 15.0
+projectile_speed = 620.0
+projectile_damage = 11.0
+projectile_max_distance = 700.0
+projectile_explosion_radius = 0.0
+projectile_pierces = true
+zone_chakra_cost_min = 30.0
+zone_chakra_cost_max = 55.0
+zone_radius_min = 60.0
+zone_radius_max = 135.0
+zone_charge_time_max = 1.2
+zone_duration = 5.0
+zone_damage_per_second = 0.0
+zone_pull_force = 240.0
+impulse_cooldown = 2.5
+impulse_distance = 240.0
+impulse_travel_time = 0.18
+impulse_trail_duration = 0.0
+impulse_trail_damage_per_second = 0.0
+impulse_ignore_collision_duration = 0.3
+impulse_pierce_damage = 0.0
+impulse_pierce_width = 0.0
+vida_maxima = 90.0

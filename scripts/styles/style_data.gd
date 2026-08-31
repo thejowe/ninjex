@@ -1,27 +1,119 @@
 extends Resource
 class_name StyleData
-## Datos ajustables de UN estilo de combate (daños, costes, tiempos).
+## Datos ajustables de UN estilo de combate (danos, costes, tiempos).
 ##
 ## Se guardan como .tres en res://resources/styles/ para poder tocar
-## numeros en playtesting sin recompilar nada. Esta tanda (H1, tareas 1-6)
-## solo necesita los campos para validar Basico + chakra; el resto de
-## ranuras (Proyectil, Zona, Impulso, Potenciador) se anaden cuando toque
-## esa tarea del plan.
+## numeros en playtesting sin recompilar nada. Tanda H1 7-11: se anaden los
+## campos de Proyectil/Agarre, Zona/Lanzamiento, Impulso, Puertas y vida,
+## ademas de los de Basico+chakra que ya existian.
+##
+## Un mismo Resource sirve para un estilo "normal" (Fuego, Viento: usan
+## chakra, tienen Proyectil y Zona) o para el Fisico (melee_only = true:
+## sin chakra, sin Proyectil ni Zona -- los sustituye Agarre y Lanzamiento,
+## y tiene Puertas). El player.gd decide que ranura usar mirando este flag,
+## en vez de tener una clase distinta por tipo de estilo.
 
 @export var style_name: String = "Estilo base (placeholder)"
+## Debe coincidir con los strings ya usados en status_tag.gd: "fuego",
+## "viento", "fisico" (o "placeholder" para el resource generico de H1 5-6).
 @export var element_name: String = "placeholder"
+## Fisico no usa chakra ni tiene Proyectil/Zona: Agarre sustituye a Proyectil
+## y Lanzamiento sustituye a Zona. Puertas solo tiene sentido si esto es true.
+@export var melee_only: bool = false
 
 @export_group("Chakra")
 ## Chakra maximo del estilo. El chakra NUNCA se recupera con el tiempo,
-## solo golpeando con el Basico (ver player.gd).
+## solo golpeando con el Basico (ver player.gd). En Fisico se deja a 0.
 @export var chakra_max: float = 100.0
 ## Chakra recuperado por cada golpe conectado del Basico.
 @export var chakra_recovered_per_hit: float = 12.0
 
 @export_group("Basico")
 @export var basic_damage: float = 8.0
+## Alcance y semiangulo (grados) del golpe melee para detectar enemigos.
+## Se usa para los 3 estilos, incluido Fisico: el "hit real" del Basico
+## era un hueco de la tanda anterior (solo llevaba combo+chakra, sin danar
+## a nadie) -- se completa aqui porque sin esto el combate no se puede
+## probar de verdad.
+@export var basic_range: float = 70.0
+@export var basic_cone_degrees: float = 80.0
 ## Ventana en segundos para encadenar el siguiente golpe antes de que el
 ## combo se reinicie a 0.
 @export var basic_combo_window: float = 0.6
 ## Duracion de la etiqueta elemental que deja el tercer golpe.
 @export var basic_tag_duration: float = 1.5
+
+@export_group("Proyectil")
+## Coste de chakra para lanzar un Proyectil. No se usa si melee_only.
+@export var projectile_chakra_cost: float = 15.0
+@export var projectile_speed: float = 520.0
+@export var projectile_damage: float = 14.0
+@export var projectile_max_distance: float = 650.0
+## Fuego: bola que estalla al impactar -- radio de la explosion (area).
+@export var projectile_explosion_radius: float = 55.0
+## Viento: cuchilla de aire, atraviesa varios enemigos en linea en vez de
+## destruirse al primer impacto.
+@export var projectile_pierces: bool = false
+
+@export_group("Agarre (solo Fisico)")
+## Cono estrecho de autoapuntado suave frente al jugador para elegir el
+## enemigo mas cercano a agarrar.
+@export var grab_range: float = 90.0
+@export var grab_cone_degrees: float = 40.0
+## Distancia a la que se sostiene al enemigo agarrado, delante del jugador.
+@export var grab_hold_offset: float = 40.0
+## Si no se lanza antes de esto, el agarre se suelta solo.
+@export var grab_hold_duration: float = 3.5
+
+@export_group("Zona")
+## Cargar Q mas tiempo sube radio y coste linealmente hasta estos maximos.
+@export var zone_chakra_cost_min: float = 30.0
+@export var zone_chakra_cost_max: float = 55.0
+@export var zone_radius_min: float = 55.0
+@export var zone_radius_max: float = 125.0
+@export var zone_charge_time_max: float = 1.2
+@export var zone_duration: float = 6.0
+## Fuego: brasas persistentes, dano por segundo a quien las pise.
+@export var zone_damage_per_second: float = 12.0
+## Viento: torbellino, fuerza con la que arrastra enemigos al centro.
+@export var zone_pull_force: float = 220.0
+
+@export_group("Lanzamiento (solo Fisico)")
+## Sustituye a la Zona: tira al enemigo agarrado hacia el cursor.
+@export var throw_speed: float = 900.0
+@export var throw_damage: float = 20.0
+
+@export_group("Impulso")
+@export var impulse_cooldown: float = 3.0
+@export var impulse_distance: float = 180.0
+## Cuanto tarda en recorrer esa distancia (mayor = se ve mas "salto", menor
+## = mas "parpadeo").
+@export var impulse_travel_time: float = 0.22
+## Fuego: paso ardiente, deja un rastro de fuego detras.
+@export var impulse_trail_duration: float = 3.0
+@export var impulse_trail_damage_per_second: float = 10.0
+## Viento: salto largo, ignora colisiones/desniveles brevemente tras saltar.
+@export var impulse_ignore_collision_duration: float = 0.3
+## Fisico: embestida, atraviesa enemigos en el camino.
+@export var impulse_pierce_damage: float = 16.0
+@export var impulse_pierce_width: float = 34.0
+
+@export_group("Puertas (solo Fisico)")
+## Mantener F escala nivel 1 -> 2 -> 3 mientras se mantiene abierto.
+@export var puertas_niveles_max: int = 3
+@export var puertas_tiempo_por_nivel: float = 2.5
+## +X% de dano y velocidad por nivel abierto (nivel * este valor).
+@export var puertas_damage_multiplier_per_level: float = 0.35
+@export var puertas_speed_multiplier_per_level: float = 0.15
+@export var puertas_life_drain_per_second_per_level: float = 4.0
+## Segundos de vulnerabilidad al cerrar = tiempo_abierto * este factor.
+@export var puertas_vulnerability_factor: float = 0.5
+## Multiplicador de dano recibido durante la vulnerabilidad.
+@export var puertas_vulnerability_damage_multiplier: float = 2.0
+## Con las Puertas abiertas, cualquier Potenciador que reciba dura el doble.
+## HOOK preparado para cuando exista el Potenciador (tarea futura, no
+## implementada en esta tanda) -- ver Player.potenciador_duration_multiplier().
+@export var puertas_potenciador_duration_multiplier: float = 2.0
+
+@export_group("Vida")
+@export var vida_maxima: float = 100.0

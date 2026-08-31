@@ -16,6 +16,9 @@ enum Estado { PATRULLA, PERSIGUE, ATACA }
 ## Nombre del grupo en el que deben registrarse los jugadores (add_to_group)
 ## para que este enemigo pueda detectarlos y perseguirlos.
 const GRUPO_JUGADORES := "jugadores"
+## Grupo propio: asi Proyectil/Zona/Impulso/Agarre (tanda H1 7-11) encuentran
+## enemigos sin acoplarse a esta clase concreta.
+const GRUPO_ENEMIGOS := "enemigos"
 
 @export_group("Vida")
 @export var vida_maxima: float = 50.0
@@ -33,6 +36,16 @@ const GRUPO_JUGADORES := "jugadores"
 var vida_actual: float
 var estado: Estado = Estado.PATRULLA
 var objetivo_jugador: Node2D = null
+
+## Jugador (Fisico) que tiene a este enemigo agarrado. Mientras no sea null,
+## la IA se congela por completo y la posicion la controla quien agarra
+## (ver player.gd _process_grab_hold). Lo pone/quita el host via las RPC de
+## agarre/lanzamiento/suelta -- ver submit_grab_attempt / confirm_throw /
+## confirm_release_grab en player.gd.
+var agarrado_por: Node2D = null
+## Tras un lanzamiento, breve ventana donde la IA no pisa el velocity del
+## impacto (si no, _procesar_persecucion lo sobreescribe el mismo frame).
+var _aturdido_restante: float = 0.0
 
 var _tiempo_ataque_restante: float = 0.0
 var _punto_patrulla_a: Vector2
@@ -52,10 +65,26 @@ func _ready() -> void:
 	vida_actual = vida_maxima
 	_punto_patrulla_a = _marcador_a.global_position if _marcador_a else global_position
 	_punto_patrulla_b = _marcador_b.global_position if _marcador_b else global_position
+	add_to_group(GRUPO_ENEMIGOS)
 
 
 func _physics_process(delta: float) -> void:
 	if vida_actual <= 0.0:
+		return
+
+	if agarrado_por != null:
+		# Congelado mientras el Fisico lo sostiene: la posicion la fija
+		# player.gd cada frame (agarre delante del jugador).
+		velocity = Vector2.ZERO
+		return
+
+	if _aturdido_restante > 0.0:
+		# Deja que el impulso del lanzamiento se vea antes de que la IA
+		# retome el control (si no, _procesar_persecucion pisaria el
+		# velocity del lanzamiento en el mismo frame).
+		_aturdido_restante -= delta
+		velocity = velocity.move_toward(Vector2.ZERO, 800.0 * delta)
+		move_and_slide()
 		return
 
 	objetivo_jugador = _buscar_jugador_mas_cercano()
@@ -162,3 +191,20 @@ func recibir_daño(tipo_daño: String, cantidad: float) -> void:
 func morir() -> void:
 	murio.emit(self)
 	queue_free()
+
+
+## Lanzamiento del Fisico (ranura Zona sustituida): lo llama confirm_throw()
+## en player.gd cuando el host confirma el lanzamiento. Suelta el agarre,
+## empuja al enemigo hacia `direccion` y aplica dano de tipo "aplastamiento"
+## (coincide con la taxonomia de danos de H2: cortante/contundente/quemadura/
+## electrico/aplastamiento/veneno -- deja el terreno preparado para esa
+## tanda aunque el estado de conservacion del cadaver no exista todavia).
+## Nota de diseno emergente: si el enemigo aterriza sobre una GroundZone al
+## ser empujado, la propia Area2D de la zona lo detecta igual que a
+## cualquier otro cuerpo -- asi se cumple sin codigo extra que "el Fisico es
+## el unico que puede meter enemigos dentro de las zonas de otros".
+func lanzar(direccion: Vector2, velocidad: float, daño: float) -> void:
+	agarrado_por = null
+	_aturdido_restante = 0.35
+	velocity = direccion * velocidad
+	recibir_daño("aplastamiento", daño)
