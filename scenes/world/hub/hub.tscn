@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/economy/forja.tscn" id="1_forja"]
 [ext_resource type="PackedScene" path="res://scenes/economy/herboristeria.tscn" id="2_herb"]
@@ -6,6 +6,9 @@
 [ext_resource type="PackedScene" path="res://scenes/economy/sastreria.tscn" id="4_sastreria"]
 [ext_resource type="PackedScene" path="res://scenes/economy/casa_equipo.tscn" id="5_casa_equipo"]
 [ext_resource type="PackedScene" path="res://scenes/world/tablon_misiones.tscn" id="6_tablon_misiones"]
+[ext_resource type="PackedScene" path="res://scenes/economy/tabernera.tscn" id="7_tabernera"]
+[ext_resource type="PackedScene" path="res://scenes/economy/pescador.tscn" id="8_pescador"]
+[ext_resource type="PackedScene" path="res://scenes/economy/viejo_maestro.tscn" id="9_viejo_maestro"]
 
 [sub_resource type="RectangleShape2D" id="Shape_wall_h_1024"]
 size = Vector2(1024, 32)
@@ -161,6 +164,12 @@ color = Color(0.3, 0.28, 0.35, 1)
 
 [node name="TabernaAnclaRota" parent="Muelle" instance=ExtResource("3_taberna")]
 position = Vector2(2250, 600)
+
+[node name="Tabernera" parent="Muelle" instance=ExtResource("7_tabernera")]
+position = Vector2(2190, 550)
+
+[node name="Pescador" parent="Muelle" instance=ExtResource("8_pescador")]
+position = Vector2(1550, 550)
 
 [node name="TablonMisiones" parent="Muelle" instance=ExtResource("6_tablon_misiones")]
 position = Vector2(1700, 300)
@@ -488,6 +497,9 @@ color = Color(0.3, 0.28, 0.35, 1)
 
 [node name="CasaEquipo" parent="Terrazas" instance=ExtResource("5_casa_equipo")]
 position = Vector2(1962, -3120)
+
+[node name="ViejoMaestro" parent="Terrazas" instance=ExtResource("9_viejo_maestro")]
+position = Vector2(1650, -2900)
 
 [node name="Floor" type="ColorRect" parent="Terrazas"]
 offset_left = 1450.0

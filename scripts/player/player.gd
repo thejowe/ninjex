@@ -566,6 +566,12 @@ func _physics_process(delta: float) -> void:
 			_request_elegir_mision("ruinas")
 		if Input.is_action_just_pressed("volver_hub"):
 			_request_volver_hub()
+		if Input.is_action_just_pressed("hablar_tabernera"):
+			_request_hablar_tabernera()
+		if Input.is_action_just_pressed("hablar_viejo_maestro"):
+			_request_hablar_viejo_maestro()
+		if Input.is_action_just_pressed("hablar_pescador"):
+			_request_hablar_pescador()
 	move_and_slide()
 
 ## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
@@ -587,6 +593,34 @@ func _ajustar_apuesta_monto(delta: float) -> void:
 	_apuesta_monto = max(APUESTA_MONTO_MINIMO, _apuesta_monto + delta)
 	_status_label.modulate = Color(1, 1, 1)
 	_status_label.text = "Apuesta actual: %.0f (+/- para ajustar)" % _apuesta_monto
+
+## Solo local (H6 narrativa, mismo criterio que _toggle_apuesta_moneda): la
+## linea del NPC se calcula a partir de NetworkManager.misiones_completadas,
+## que ya es identico en todos los peers (mutado por confirm_volver_hub via
+## RPC call_local) -- no hay estado que mutar ni nada que un cliente pueda
+## mentir para conseguir, asi que un RPC propio solo añadiria una vuelta
+## host de mas para mostrar texto de ambientacion. Igual que prologo.gd, es
+## ambientacion que cada peer ve en su propia pantalla.
+func _request_hablar_tabernera() -> void:
+	var tabernera := _find_nearest_tabernera_in_range(HUB_RANGE)
+	if tabernera == null:
+		return
+	_status_label.modulate = Color(1, 0.9, 0.7)
+	_status_label.text = tabernera.linea_para(NetworkManager.misiones_completadas)
+
+func _request_hablar_viejo_maestro() -> void:
+	var maestro := _find_nearest_viejo_maestro_in_range(HUB_RANGE)
+	if maestro == null:
+		return
+	_status_label.modulate = Color(1, 0.9, 0.7)
+	_status_label.text = maestro.linea_para(NetworkManager.misiones_completadas)
+
+func _request_hablar_pescador() -> void:
+	var pescador := _find_nearest_pescador_in_range(HUB_RANGE)
+	if pescador == null:
+		return
+	_status_label.modulate = Color(1, 0.9, 0.7)
+	_status_label.text = pescador.linea_para(NetworkManager.misiones_completadas)
 
 func _handle_movement() -> void:
 	if _impulse_active_time > 0.0 or _potenciador_dash_active_time > 0.0:
@@ -666,7 +700,20 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_peleas_sotano_in_range(CASINO_RANGE) != null:
 		texto = "Apuesta %.0f %s en las Peleas del Sotano -- , izquierda, . derecha" % [_apuesta_monto, _apuesta_moneda]
 	elif _find_nearest_usurero_in_range(CASINO_RANGE) != null:
-		texto = "Pulsa U para pedir un prestamo"
+		# H6 narrativa: la linea del Usurero se decidio SIN tecla propia (a
+		# diferencia de tabernera/viejo maestro/pescador) -- aparece sola en
+		# el mismo aviso de "pulsa U", delante del menu de prestamo, porque
+		# el Usurero ya tiene su propia tecla ocupada y anadir una segunda
+		# solo para hablar es mas friccion de la que pide una linea de
+		# ambientacion (decision de diseno, ver cabecera de esta funcion).
+		var usurero_hint := _find_nearest_usurero_in_range(CASINO_RANGE)
+		texto = "\"%s\" -- Pulsa U para pedir un prestamo" % usurero_hint.linea_para(NetworkManager.misiones_completadas)
+	elif _find_nearest_tabernera_in_range(HUB_RANGE) != null:
+		texto = "Pulsa F7 para hablar con la tabernera"
+	elif _find_nearest_pescador_in_range(HUB_RANGE) != null:
+		texto = "Pulsa F9 para hablar con el pescador"
+	elif _find_nearest_viejo_maestro_in_range(HUB_RANGE) != null:
+		texto = "Pulsa F8 para hablar con el viejo maestro"
 	elif _find_nearest_forja_in_range(HUB_RANGE) != null:
 		texto = "Pulsa Y para mejorar la forja"
 	elif _find_nearest_herboristeria_in_range(HUB_RANGE) != null:
@@ -1057,6 +1104,48 @@ func _find_nearest_sastreria_in_range(range_max: float) -> Sastreria:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = s
+	return nearest
+
+## Tabernera mas cercana dentro de range_max (H6 narrativa). Misma
+## proximidad simple que el resto de puntos estaticos.
+func _find_nearest_tabernera_in_range(range_max: float) -> Tabernera:
+	var nearest: Tabernera = null
+	var best_dist: float = INF
+	for t in get_tree().get_nodes_in_group(Tabernera.GRUPO_TABERNERAS):
+		if not (t is Tabernera):
+			continue
+		var dist: float = global_position.distance_to(t.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = t
+	return nearest
+
+## Viejo maestro mas cercano dentro de range_max (H6 narrativa). Misma
+## proximidad simple.
+func _find_nearest_viejo_maestro_in_range(range_max: float) -> ViejoMaestro:
+	var nearest: ViejoMaestro = null
+	var best_dist: float = INF
+	for v in get_tree().get_nodes_in_group(ViejoMaestro.GRUPO_VIEJOS_MAESTROS):
+		if not (v is ViejoMaestro):
+			continue
+		var dist: float = global_position.distance_to(v.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = v
+	return nearest
+
+## Pescador mas cercano dentro de range_max (H6 narrativa). Misma proximidad
+## simple.
+func _find_nearest_pescador_in_range(range_max: float) -> Pescador:
+	var nearest: Pescador = null
+	var best_dist: float = INF
+	for p in get_tree().get_nodes_in_group(Pescador.GRUPO_PESCADORES):
+		if not (p is Pescador):
+			continue
+		var dist: float = global_position.distance_to(p.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = p
 	return nearest
 
 ## Casa del equipo mas cercana dentro de range_max. Misma proximidad simple.
