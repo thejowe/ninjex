@@ -1,179 +1,131 @@
 # Plan de desarrollo
 
-**Decisiones bloqueantes (confirmadas por el usuario):**
-- Motor: **Godot 4**
-- Equipo: **un desarrollador en solitario**, arte propio o comprado
-- Alcance inmediato: **vertical slice jugable** (no el juego completo)
+**Basado en:** `brief-traspaso-claude-code.md` + `diseno-juego-ninja.md` + el historial real de commits de este repo.
+**Estado:** el juego tiene un vertical slice jugable funcionando (H1-H6 con recortes explícitos, ver abajo). Este documento se reescribió para reflejar la realidad del código, no una planificación previa a él — hubo desarrollo en paralelo (varias sesiones/agentes trabajando sobre el mismo repo) que avanzó más rápido que la documentación, así que este archivo se sincroniza contra `git log`, nunca al revés.
 
 ---
 
-## Preguntas abiertas que siguen pendientes
+## 0. Decisiones confirmadas
 
-Estas no bloquean el arranque de H1, pero hay que resolverlas antes de tocar el código que dependa de ellas:
-
-| Pregunta | Bloquea |
+| Decisión | Respuesta |
 |---|---|
-| Fórmula concreta de valor del cadáver según tipo de daño | H2 (economía de cadáveres) |
-| Cómo se sincroniza la ventana de 0,5 s de combo con latencia real | H1, tarea de combinaciones |
-| Si el mando entra en el alcance del prototipo o se descarta | H1, sistema de apuntado |
-| Nombres definitivos de los seis estilos (`Físico` es marcador de posición) | Cosmético, no bloquea código |
+| Motor | **Godot 4** |
+| Equipo | Un desarrollador de código en solitario + **una persona dedicada a assets** (ver `plan-assets.md`) |
+| Alcance | Vertical slice jugable — **ya construido**, con recortes deliberados sobre el diseño original (detallados hito a hito abajo) |
 
-Se resuelven cuando toque esa tarea, no antes.
-
----
-
-## Hitos y dependencias
-
-```
-H1 Prototipo de combate
- └─ H2 Bucle económico
-     └─ H3 Casino mínimo
-         └─ H4 Bóveda compartida
-             └─ H5 Hub y taberna
-                 └─ H6 Estilos restantes e historia
-```
-
-Cada hito depende estrictamente del anterior. No se empieza un hito sin el criterio de "hecho" del anterior cumplido.
+**Preguntas abiertas del brief original — resueltas:**
+- Fórmula de valor del cadáver: resuelta en `scripts/economy/economia_cadaveres.gd` (multiplicador base por tipo de daño, cortante 1.5 hasta quemadura 0.1).
+- Ventana de sincronización de combos con latencia: resuelta con el patrón RPC `submit_*` (cliente) / `confirm_*` (host autoritativo) en todas las acciones de combate.
+- Mando (gamepad): sigue fuera de alcance. No se ha tocado.
+- Nombres definitivos de los 6 estilos: **resuelto**. Único cambio real: "Físico" → **"Taijutsu"** (`resources/styles/fisico.tres`, `style_name`). El resto (Fuego/Agua/Rayo/Viento/Tierra) ya tenía nombre definitivo desde el principio.
 
 ---
 
-## H1 — Prototipo de combate
+## 1. Estado real por hito (leer esto antes de lanzar cualquier agente)
 
-Alcance: Fuego, Viento, Físico. Una sala, enemigos de comportamiento simple, dos jugadores.
-**Hecho cuando:** dos personas pelean 20 min sin aburrirse, viento+fuego colocado con el cursor se siente bien, y el Físico llega a tiempo a la pelea.
+### H1 — Prototipo de combate: **✅ hecho y validado**
+Fuego, Viento, Taijutsu (ex-Físico) completos (Básico/Proyectil-Agarre/Zona-Lanzamiento/Impulso/Potenciador, Puertas), combinación Viento+Fuego (tormenta ígnea), enemigo simple host-autoritativo, segundo jugador validado con 2 instancias reales. Pasada de legibilidad visual (barras de vida/chakra, flash de golpe, screen shake, color por estilo) ya incluida, aunque sigue siendo **arte placeholder** (`ColorRect`/`Tween`, sin sprites finales).
 
-### Estructura de carpetas (Godot 4)
+### H2 — Bucle económico: **✅ hecho**
+Cadáver con `estado_conservacion` por tipo de daño del golpe final, fórmula de valor, Carnicero y Boticario, carga de hasta 3 cadáveres con penalización de velocidad, venta al pool compartido `dinero_manchado`.
+
+### H3 — Casino mínimo: **✅ hecho**
+Cambista (15 % comisión), Mesa de Dados de tres caras con apuesta ajustable (sin mínimo fijo de 20) en manchado o limpio. HUD mínimo de dinero.
+
+### H4 — Bóveda compartida: **✅ hecho, con alcance recortado por decisión explícita del usuario**
+Solo se implementó **el Usurero** (presta cuando `dinero_manchado` y `dinero_limpio` están exactamente a cero, deuda real en negativo que se recorta un 20 % de las próximas 5 ganancias). **La votación grupal, la revelación de votos y el Modo Mesa Alta se descartaron por decisión explícita del usuario**: cualquier jugador del grupo puede apostar del bote común directamente, sin votar ni pedir permiso — la bóveda compartida ya existe de facto en `dinero_manchado`/`dinero_limpio` desde H2/H3. Esto **no es un olvido ni una suposición** — está confirmado en el brief y el diseño (sección "Bóveda compartida, sin votación").
+
+### H5 — Hub, tiendas y taberna: **✅ hecho por completo**
+Hub navegable en 4 alturas (Muelle con Taberna, Calle de los Faroles con Forja/Herboristería/Sastrería, Muelle Alto con el casino completo, Terrazas con la Casa del equipo). Forja (3 niveles de daño, techo +20 % respetado), Herboristería (4 consumibles, máx. 3 cargados), Taberna (brindis compartido: +15 % daño de grupo 180 s), **Sastrería** (tinte cosmético por jugador, sin efecto en balance) y **Casa del equipo** (Cocina: reducción de daño de grupo temporal; Almacén: +2 cadáveres cargables para todo el grupo; Jardín: descuento en Herboristería; Palomar bloqueado — depende del sistema de misiones que todavía no existe). Música/emotes/sillas/pizarra de deudas y récords siguen **sin construir** (nunca se asignaron a ningún agente todavía, no hay decisión de cortarlos — ver todolist).
+
+### H6 — Estilos restantes e historia: **✅ combate, casino y arranque de historia hechos**, resto **⬜ pendiente**
+- **Combate**: Agua, Rayo, Tierra completos, 4 combinaciones de suelo nuevas (charco electrificado, barro, vapor, tormenta de polvo).
+- **Sellos**: scaffold completo — acción `sellos` (mantener R + 3 direccionales, inmóvil mientras dura), grupo `Sellos` en `style_data.gd`, una técnica oculta placeholder por estilo (nova/corte/curación/descarga/puño sísmico/golpe fantasma). **Sin restricción de desbloqueo todavía**: cualquiera con el estilo equipado puede usarla ya — falta el sistema de pergaminos/fichas para que sea algo que se compre, no un freebie.
+- **Casino**: los 4 juegos completos (Dados, Rueda del Clan, Cartas Selladas, Peleas del Sótano), medidor de sospecha por jugador (verde/ámbar/rojo), trampa de Viento en Dados y de Rayo en Cartas (la trampa de Sellos en Cartas sigue bloqueada, depende de pergaminos).
+- **Prólogo y elección de estilo**: pantalla previa al spawn ya existe (`scenes/ui/prologo.tscn`, `scenes/ui/seleccion_estilo.tscn`), cada jugador elige su estilo antes de entrar y el host se lo asigna en `_spawn_player()` en vez del hardcodeado anterior.
+
+**Lo que NO se ha tocado todavía de H6**: fichas (tercera moneda) y tienda de pergaminos, Falsificador y clan rival como compradores, prisioneros vivos, los 5 biomas de misión y el sistema de misión en sí (12-18 min, tres áreas, extracción), historia/diálogos de NPCs más allá del prólogo.
+
+**Aviso de tecla al acercarse a un punto de interacción** y varios **fixes de red/colisión** (jugador spawneaba en la esquina, dash atravesaba paredes, daño no se sincronizaba al segundo jugador, host nunca arrancaba el servidor) ya están hechos — no son tareas pendientes.
+
+---
+
+## 2. Qué queda por hacer de verdad (código) — todolist real
+
+**Este checklist ES el todolist de código, no una copia.** Vive en este archivo a propósito, porque es lo único que llega igual a cualquier dispositivo con un `git pull` — una herramienta tipo `TaskList` puede no existir según el entorno donde corra la sesión (no es parte del repo, no viaja con git). Si en tu sesión sí existe una herramienta de tareas, úsala como ayuda visual si quieres, pero **la fuente de verdad es marcar `[x]` aquí y hacer commit** — nunca al revés.
+
+- [ ] **Playtest de validación con gente real** de H4/H5/H6. Ninguno de los recortes de H4 (sin votación) se ha probado todavía con un grupo real jugando a la vez.
+- [ ] **Fichas y tienda de pergaminos** (H6): la tercera moneda del brief, ganada jugando en el casino, que compra técnicas ocultas de Sellos. *Desbloquea* la trampa de Sellos pendiente en Cartas Selladas. Agente: `casino-agent`.
+- [ ] **Falsificador, clan rival y prisioneros vivos** (H6) — *depende de los biomas/misión de abajo*: necesita objetivos y capturas que solo existen dentro de una misión real. Agente: `economy-agent`.
+- [ ] **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — duración 12-18 min, tres áreas encadenadas, vuelta a extracción. Agente: `narrative-agent`.
+- [ ] **Historia y diálogos de NPCs** (H6, al final) — *depende de los biomas/misión*: tabernera, viejo maestro, usurero, pescador, con una línea nueva por misión completada. Agente: `narrative-agent`.
+- [ ] **Extras de taberna**: música diegética, emotes, sillas, pizarra de deudas y récords. Sin asignar todavía, prioridad baja — es la capa acogedora, no bloquea nada del bucle jugable. Agente: `hub-agent`.
+
+No se retoma la votación de bóveda ni el Modo Mesa Alta salvo que el usuario lo pida explícitamente — esa sí es una decisión de diseño confirmada, no scope pendiente.
+
+**Sobre el arte:** deliberadamente no está en esta lista. El trabajo de assets tiene su propio plan (`plan-assets.md`) y su propio checklist de progreso (`assets-progreso.md`), gestionado por `arte-pilar-agent` — un sistema de seguimiento completamente aparte, para que ninguno de los dos equipos bloquee al otro. La única conexión es que `arte-pilar-agent` lee (nunca edita) la sección 1 de este documento para saber qué hitos de código ya están validados.
+
+---
+
+## 3. Estructura de carpetas (real, ya en uso)
 
 ```
 res://
   scenes/
-    main/            # escena raíz, spawn de jugadores
+    main/                  # escena raíz, spawn de jugadores
     player/
     enemies/
     combat/
-      zones/         # escenas de efectos de suelo
+      zones/                # ground_zone, zone_preview
       projectiles/
+    cadavers/
+    economy/                 # cambista, comprador, forja, herboristeria, sastreria, casa_equipo, taberna, usurero, mesa_dados, ruleta, cartas_selladas, peleas_sotano
     world/
-      test_room/
+      test_room/             # sala de combate + casino
+      hub/                    # Puerto Bajo (4 alturas)
+    ui/                       # prologo.tscn, seleccion_estilo.tscn
   scripts/
     player/
-    styles/          # una clase por estilo (Resource o Node)
-    combat/
-      status_tag.gd  # etiqueta elemental flotante
-    network/
+    styles/                   # style_data.gd
+    combat/                   # ground_zone, projectile, status_tag, zone_preview
+    economy/
+    network/                  # network_manager.gd (host-autoritativo)
+    ui/                       # prologo.gd, seleccion_estilo.gd
   resources/
-    styles/          # datos de cada estilo como Resource (.tres)
+    styles/                    # .tres por estilo: fuego, viento, fisico(Taijutsu), agua, rayo, tierra
   assets/
-    sprites/          # pixel art, 32x32 px por sprite
-      legs/
-      torso/
-      fx/
+    sprites/{legs,torso,fx}/    # todavía vacíos de arte final
     audio/
 ```
 
-Motivo de separar `resources/styles` de `scripts/styles`: los datos de cada estilo (daños, costes, tiempos) deben poder ajustarse sin tocar código, para iterar rápido en playtesting.
+**Arquitectura de red:** host-autoritativo desde el primer commit. `MultiplayerSpawner`/`MultiplayerSynchronizer` para posición/estado, patrón RPC `submit_*` (cliente pide) / `confirm_*` (host resuelve y confirma a todos los peers) para toda acción de combate y economía.
 
-### Arquitectura base
-
-- Host-autoritativo desde el primer commit (restricción técnica del brief). Usar `MultiplayerSpawner` + `MultiplayerSynchronizer` de Godot 4 para posición/estado, y RPCs para acciones (ataques, combos).
-- Combos: el cliente ejecuta y valida localmente; el host confirma y solo corrige si el resultado es imposible (no si es distinto). Esto se implementa como una tarea propia, no se pospone: si se deja para el final, hay que reescribir el input del jugador.
-- Sprite en 3 capas por personaje: `legs` (dirección de movimiento), `torso` (rota con el cursor), `fx` (efecto elemental, sprite independiente). Se monta como escena con 3 `Sprite2D`/`AnimatedSprite2D` hijos desde la primera tarea de movimiento, aunque el arte sea placeholder.
-
-### Orden de implementación
-
-1. **Setup del proyecto**: estructura de carpetas, control de versiones, escena `main` vacía.
-2. **Arquitectura de red mínima**: `MultiplayerSpawner`, un jugador se conecta como host, arquitectura preparada para un segundo actor aunque el playtest inicial sea con uno solo.
-3. **Movimiento**: teclado (WASD), capa `legs` orientada a la dirección de movimiento.
-4. **Apuntado**: capa `torso` rota hacia el cursor. Placeholder de esquema de mando pendiente de la decisión abierta.
-5. **Básico** (clic izq.): melé encadenable 3 golpes, sin coste. Tercer golpe deja la etiqueta elemental flotando 1,5 s.
-6. **Chakra**: recurso por estilo, se recupera solo golpeando con el Básico. Sin esto los siguientes pasos no se pueden validar.
-7. **Proyectil** (clic der.): coste bajo, va hacia el cursor.
-8. **Zona** (Q): indicador previo, coste alto, se coloca en el punto del cursor.
-9. **Impulso** (Espacio): movilidad o defensa, recarga corta.
-10. **Físico completo**: sustituye Proyectil por agarre y Zona por lanzamiento; Puertas (3 niveles, drena vida, vulnerabilidad al cerrar).
-11. **Combinaciones de suelo**: zona sobre zona (viento+fuego primero, es el caso de validación del hito).
-12. **Potenciador** (E) y **combinaciones de cuerpo**: requiere un segundo jugador real para probarse con sentido.
-13. **Segundo jugador en red**: pasar de un actor a dos, validar host-autoritativo con latencia real.
-14. **Enemigos simples**: IA básica en la sala de prueba, sin comportamiento avanzado.
-15. **Playtest de 20 minutos**: criterio de "hecho" del hito.
-
-Nota de dependencia real: los pasos 12 y 13 están acoplados — el Potenciador no se puede validar de verdad sin el segundo jugador, así que en la práctica van juntos aunque el brief los liste por separado.
+**Sprite en 3 capas:** `legs` (dirección de movimiento) / `torso` (rota al cursor) / `fx` (efecto elemental independiente) — ya montado en `player.tscn`, pendiente de sustituir el placeholder por arte final.
 
 ---
 
-## H2 — Bucle económico
+## 4. Reglas invariantes (siguen vigentes para todo lo que falta)
 
-Depende de H1. Alcance: cadáveres con estado de conservación, carnicero y boticario, peso del botín, extracción.
-**Hecho cuando:** el jugador cambia cómo pelea para conseguir mejores cuerpos, de forma observable.
-
-Tareas:
-1. Entidad cadáver con `estado_conservacion` determinado por el tipo de daño del golpe final (cortante, contundente, quemadura, eléctrico, aplastamiento, veneno).
-2. Fórmula de valor por estado — **pendiente de la pregunta abierta**, resolver antes de esta tarea.
-3. Carnicero (compra todo, poco dinero) y boticario (órganos frescos) como los dos primeros compradores.
-4. Peso del botín: velocidad de vuelta al punto de extracción según carga.
-5. Flujo de extracción completo: matar → recoger → volver → vender.
+- Ninguna técnica necesaria para avanzar en la historia está detrás del casino.
+- Las técnicas compradas y el progreso de historia nunca entran en la bóveda; solo se arriesga dinero líquido.
+- Las fichas no se venden por dinero real, ni directa ni indirectamente.
+- Ninguna mejora permanente supera el +20 % sobre la base (ya respetado en Forja, Casa del equipo).
+- Los bonus de comida y casa se aplican a todo el grupo, no solo a quien pagó (ya respetado en Taberna y Casa del equipo).
+- Ningún estilo puede ser puramente de apoyo: todos hacen daño y todos aportan al grupo.
 
 ---
 
-## H3 — Casino mínimo
+## 5. Agentes especializados
 
-Depende de H2. Alcance: cambista con comisión del 15 %, juego de dados. Sin sospecha, sin pergaminos.
-**Hecho cuando:** la comisión pica lo suficiente como para querer recuperarla jugando.
+Los mismos 7 agentes de `.claude/agents/` siguen aplicando, con el dominio actualizado a lo que queda por hacer (ver el system prompt de cada uno para el detalle):
 
-Tareas:
-1. Cambista: dinero manchado → limpia, comisión 15 %.
-2. Dados de tres caras (apuesta alto/bajo).
-3. Sin medidor de sospecha todavía — se añade en H6 junto con el resto de juegos y trampas.
-
----
-
-## H4 — Bóveda compartida
-
-Depende de H3. Alcance: bote compartido, apuesta libre por cualquier jugador del grupo, sin votación.
-**Hecho cuando:** cualquier jugador puede apostar del bote común sin fricción y se siente dinero de todos. Se valida con gente, no con tests.
-
-Tareas:
-1. Bóveda compartida: el dinero de la misión pertenece a los cuatro jugadores enteros.
-2. Cualquier jugador puede apostar directamente del pool compartido, sin votación ni límite por número de jugadores.
-3. El Usurero cuando la bóveda llega a cero.
-
----
-
-## H5 — Hub y taberna
-
-Depende de H4. Alcance: aldea navegable, tiendas de dinero limpio, taberna con brindis y desglose.
-**Hecho cuando:** los jugadores se quedan en la taberna sin que nada les obligue.
-
-Tareas:
-1. Hub navegable en cuatro alturas (Muelle, Calle de los Faroles, Muelle Alto, Terrazas).
-2. Tiendas de dinero limpio: forja, sastrería, herboristería, casa del equipo.
-3. Taberna: brindis con bonus de grupo, desglose de contribución, pizarra de deudas y récords.
-
----
-
-## H6 — Estilos restantes e historia
-
-Depende de H5. Alcance: Agua, Rayo, Tierra, sistema de sellos y pergaminos, prólogo, elección de estilo.
-
-Tareas:
-1. Estilos Agua, Rayo, Tierra completos (básico/proyectil/zona/impulso/potenciador + combinaciones nuevas).
-2. Sellos: secuencia de 3 direccionales manteniendo R, técnicas ocultas de pergamino.
-3. Resto de juegos de casino (ruleta, cartas selladas, peleas del sótano) y medidor de sospecha completo.
-4. Prólogo, elección de estilo, resto de biomas de misión.
-
----
-
-## Qué NO hacer todavía
-
-Por orden explícito del brief, no antes de que el hito correspondiente esté cerrado:
-- No implementar los 6 estilos antes de validar que 3 funcionan (H1).
-- No construir el hub completo antes de tener una sala de combate divertida (H1 antes que H5).
-- No empezar por historia o diálogo (eso es H6).
-- No saltar a 4 jugadores en red directamente (H1 valida con 2).
-- No producir arte final antes de cerrar el combate (H1).
-
----
-
-## Siguiente paso
-
-H1, tarea 1: setup del proyecto Godot 4 y estructura de carpetas. Agente a lanzar: **combat-agent** (todo H1 es combate: movimiento, apuntado, chakra, estilos, combinaciones, red host-autoritativo para el combate).
+| Agente | Dominio | Qué le queda por delante |
+|---|---|---|
+| `pilar-agent` | Director de proyecto (código) | Siempre el primero — leer este documento actualizado antes de asignar nada, comparar contra `git log` porque puede haber avanzado más de una sesión en paralelo |
+| `arte-pilar-agent` | Director de la parte visual | Coordina con `plan-assets.md`/`assets-progreso.md` — gran parte de H1-H6 ya puede pasar a arte final |
+| `combat-agent` | Combate y estilos | Nada pendiente de combate puro por ahora — el siguiente enganche de Sellos (integrar con pergaminos) es tarea de `casino-agent` |
+| `netcode-agent` | Red host-autoritativa | Mantenimiento y lo que necesiten las piezas nuevas |
+| `economy-agent` | Cadáveres, compradores, tiendas de grupo | Falsificador, clan rival, prisioneros vivos (depende de biomas/misión) |
+| `casino-agent` | Casino, bóveda | Fichas y tienda de pergaminos — es lo único que le queda. **La votación de bóveda y el Modo Mesa Alta están descartados, no los reintroduzcas sin que el usuario lo pida.** |
+| `hub-agent` | Hub, tiendas, taberna | El hub mecánico y las 4 tiendas ya están completas. Le queda la capa acogedora de la Taberna: música, emotes, sillas, pizarra |
+| `narrative-agent` | Historia, misiones, biomas | Prólogo y elección de estilo ya hechos. Le queda todo el sistema de misión + los 5 biomas + historia/diálogos de NPCs |
