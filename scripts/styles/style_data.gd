@@ -167,5 +167,42 @@ class_name StyleData
 ## dure el buff (0.7 = recibe 70% del daño normal).
 @export var potenciador_tierra_damage_reduction: float = 1.0
 
+@export_group("Sellos")
+## Tecnica oculta de pergamino (brief "Sellos y cadenas"): secuencia de 3
+## direccionales manteniendo R, inmovil mientras se hacen -- el momento de
+## riesgo, no el uso habitual. PLACEHOLDER DE TESTING: el sistema real de
+## pergaminos (comprarlas con fichas en el casino) todavia no existe, asi
+## que aqui hay exactamente UNA tecnica de ejemplo por estilo, siempre
+## disponible con solo tener el estilo equipado. Cuando exista el sistema de
+## pergaminos, la disponibilidad real dependera de que se haya comprado, no
+## de tener el estilo puesto -- ver submit_sellos_technique en player.gd.
+@export var sellos_technique_name: String = "Sello sin nombre (placeholder)"
+## Coste de chakra. Se ignora si el estilo no usa chakra (melee_only, Fisico:
+## chakra_max = 0) -- el Fisico saca su Sello gratis, igual que no paga por
+## el Agarre/Lanzamiento.
+@export var sellos_chakra_cost: float = 40.0
+## Radio de la tecnica (area alrededor del jugador al completar la
+## secuencia). No se usa en Fisico, que apunta en cono como el
+## Basico/Agarre en vez de area -- ver sellos_fisico_* abajo.
+@export var sellos_radius: float = 140.0
+## Fuego: nova (tipo quemadura). Rayo: descarga (tipo electrico). Tierra:
+## puño sismico (tipo aplastamiento). Los tres usan sellos_damage/sellos_radius
+## tal cual, solo cambia el damage_type resultante segun _basic_damage_type().
+@export var sellos_damage: float = 45.0
+## Viento: ademas del daño en area, arrastra de golpe a los enemigos
+## alcanzados hacia el punto de origen esta distancia (tiron instantaneo,
+## a diferencia del arrastre progresivo de la Zona).
+@export var sellos_viento_pull_distance: float = 90.0
+## Agua: en vez de daño de area, cura de golpe al propio jugador esta
+## cantidad -- coherente con su identidad de "preparacion y sanacion".
+@export var sellos_agua_self_heal: float = 60.0
+## Fisico (melee_only): sustituye el area por un cono como el Basico/Agarre,
+## sin coste de chakra. Golpe unico mucho mas fuerte que el Basico: el
+## "momento de riesgo" del brief para un estilo que no tiene chakra que
+## arriesgar.
+@export var sellos_fisico_range: float = 100.0
+@export var sellos_fisico_cone_degrees: float = 90.0
+@export var sellos_fisico_damage: float = 55.0
+
 @export_group("Vida")
 @export var vida_maxima: float = 100.0
