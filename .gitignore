@@ -14,3 +14,7 @@ data_*/
 # System / editor
 .DS_Store
 Thumbs.db
+
+# Claude Code session-local tooling
+.claude/worktrees/
+.claude/scheduled_tasks.lock
