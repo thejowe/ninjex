@@ -2239,9 +2239,10 @@ func confirm_girar_ruleta(nuevo_limpio: float, nuevo_manchado: float, moneda: St
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
 # =========================================================================
-# Cartas Selladas (H6, tecla 7 juega, mantener 8 usa la trampa de Rayo) --
-# mismo patron submit_/confirm_ que el resto del casino. Ver
-# cartas_selladas.gd para la trampa de Sellos bloqueada.
+# Cartas Selladas (H6, tecla 7 juega, mantener 8 usa la trampa de Rayo,
+# mantener / usa la trampa de Sellos) -- mismo patron submit_/confirm_ que
+# el resto del casino. Ver cartas_selladas.gd para el detalle de las dos
+# trampas.
 # =========================================================================
 
 func _request_jugar_cartas() -> void:

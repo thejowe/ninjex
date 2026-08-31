@@ -170,12 +170,11 @@ class_name StyleData
 @export_group("Sellos")
 ## Tecnica oculta de pergamino (brief "Sellos y cadenas"): secuencia de 3
 ## direccionales manteniendo R, inmovil mientras se hacen -- el momento de
-## riesgo, no el uso habitual. PLACEHOLDER DE TESTING: el sistema real de
-## pergaminos (comprarlas con fichas en el casino) todavia no existe, asi
-## que aqui hay exactamente UNA tecnica de ejemplo por estilo, siempre
-## disponible con solo tener el estilo equipado. Cuando exista el sistema de
-## pergaminos, la disponibilidad real dependera de que se haya comprado, no
-## de tener el estilo puesto -- ver submit_sellos_technique en player.gd.
+## riesgo, no el uso habitual. Exactamente UNA tecnica por estilo (los
+## numeros de abajo). H6: ya NO es gratis por tener el estilo equipado --
+## hace falta haber comprado su pergamino en la Tienda de Pergaminos del
+## Muelle Alto (fichas, NetworkManager.pergaminos_sellos_comprados) -- ver
+## submit_sellos_technique/submit_comprar_pergamino en player.gd.
 @export var sellos_technique_name: String = "Sello sin nombre (placeholder)"
 ## Coste de chakra. Se ignora si el estilo no usa chakra (melee_only, Fisico:
 ## chakra_max = 0) -- el Fisico saca su Sello gratis, igual que no paga por
