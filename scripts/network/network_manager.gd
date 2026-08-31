@@ -227,6 +227,12 @@ func confirm_comprar_jardin(nuevo_limpio: float) -> void:
 	dinero_limpio = nuevo_limpio
 	casa_equipo_jardin_comprado = true
 
+## Estilo elegido por cada peer en la pantalla de eleccion previa al spawn
+## (H6, ver scripts/ui/seleccion_estilo.gd) -- guardado como el path del
+## recurso .tres. Sin entrada == ese peer aun no ha elegido, todavia no se
+## spawnea (ver submit_style_choice). Solo lo muta el host.
+var style_choice: Dictionary = {}
+
 func host_game() -> void:
 	# multiplayer.multiplayer_peer NUNCA es null por defecto: Godot le pone un
 	# OfflineMultiplayerPeer de por si. Comprobar "!= null" no detecta ese caso
@@ -241,9 +247,9 @@ func host_game() -> void:
 	multiplayer.multiplayer_peer = peer
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	# El host es siempre el peer 1 y se spawnea en cuanto el servidor existe,
-	# sin esperar a peer_connected (esa senal no llega para uno mismo).
-	_spawn_player(1)
+	# El spawn del host (peer 1) ya NO ocurre aqui (H6): espera a que main.gd
+	# termine el prologo + pantalla de eleccion de estilo y mande
+	# submit_style_choice, igual que cualquier otro peer.
 
 func join_game(ip: String) -> void:
 	if not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
@@ -256,22 +262,38 @@ func join_game(ip: String) -> void:
 	multiplayer.multiplayer_peer = peer
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	# No se spawnea aqui: el host detecta la conexion via peer_connected y
-	# llama a _spawn_player, que replica al nuevo jugador a todos los peers
-	# (incluido este cliente) via el MultiplayerSpawner.
+	# No se spawnea aqui: el spawn real lo dispara submit_style_choice en
+	# cuanto este cliente elige estilo y confirma la conexion (ver main.gd).
 
-func _on_peer_connected(id: int) -> void:
-	if multiplayer.is_server():
-		_spawn_player(id)
+func _on_peer_connected(_id: int) -> void:
+	pass # el spawn ya no depende de la conexion, ver submit_style_choice.
 
 func _on_peer_disconnected(id: int) -> void:
+	style_choice.erase(id)
 	if players_root == null:
 		return
 	var node := players_root.get_node_or_null(str(id))
 	if node != null:
 		node.queue_free()
 
-func _spawn_player(id: int) -> void:
+## Pedido por cada peer (host incluido) en cuanto termina la pantalla de
+## eleccion de estilo y la conexion esta lista (ver main.gd _run_intro_flow).
+## Mismo patron any_peer+call_local+validacion por sender_id que el resto de
+## submit_* de player.gd, pero vive aqui porque este RPC ocurre ANTES de que
+## exista ningun nodo Player al que atar la autoridad.
+@rpc("any_peer", "call_local", "reliable")
+func submit_style_choice(style_path: String) -> void:
+	if not multiplayer.is_server():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id == 0:
+		sender_id = multiplayer.get_unique_id() # llamada local del propio host
+	if style_choice.has(sender_id):
+		return # ya eligio antes (RPC duplicado o reconexion), no re-spawnear
+	style_choice[sender_id] = style_path
+	_spawn_player(sender_id, style_path)
+
+func _spawn_player(id: int, style_path: String = "") -> void:
 	if players_root == null:
 		push_warning("NetworkManager: players_root no asignado todavia, no se puede spawnear peer %d" % id)
 		return
@@ -280,6 +302,11 @@ func _spawn_player(id: int) -> void:
 	var player_scene: PackedScene = preload("res://scenes/player/player.tscn")
 	var player := player_scene.instantiate()
 	player.name = str(id)
+	# Se asigna ANTES de add_child: el _ready() del jugador (que decide el
+	# estilo por defecto si style_data es null) se dispara en cuanto entra al
+	# arbol, asi que tiene que estar puesto antes.
+	if style_path != "":
+		player.style_data = load(style_path)
 	# add_child en el servidor es lo que dispara la replicacion automatica
 	# via el MultiplayerSpawner de la escena main (player.tscn esta en su
 	# lista de escenas auto-spawneables).

@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1")
-style_name = "Fisico"
+style_name = "Taijutsu"
 element_name = "fisico"
 melee_only = true
 chakra_max = 0.0
@@ -33,4 +33,8 @@ puertas_life_drain_per_second_per_level = 4.0
 puertas_vulnerability_factor = 0.5
 puertas_vulnerability_damage_multiplier = 2.0
 puertas_potenciador_duration_multiplier = 2.0
+sellos_technique_name = "Sello del Golpe Fantasma"
+sellos_fisico_range = 110.0
+sellos_fisico_cone_degrees = 80.0
+sellos_fisico_damage = 60.0
 vida_maxima = 120.0

@@ -14,12 +14,13 @@ extends CharacterBody2D
 ## conectado (este playtest) host y jugador son el mismo peer -- con un
 ## segundo jugador real el flujo ya esta listo.
 ##
-## Ayuda de playtest, NO es una mecanica real del juego: las teclas 1/2/3
-## cambian el estilo del propio jugador en caliente (Fuego/Viento/Fisico).
-## Sirve para poder probar los tres estilos -- incluida la combinacion
-## Viento sobre Fuego -- con un solo teclado conectado. La eleccion de
-## estilo real (pantalla del hub) es tarea futura y no tiene nada que ver
-## con esto.
+## Ayuda de playtest, NO es una mecanica real del juego: las teclas 1-6
+## (debug_style_* en project.godot) cambian el estilo del propio jugador en
+## caliente. Sirve para probar combinaciones de estilos con un solo teclado
+## conectado. La eleccion de estilo REAL ya existe (H6): pantalla previa al
+## spawn (ver scripts/ui/seleccion_estilo.gd + NetworkManager.submit_style_choice/
+## _spawn_player) -- estas teclas quedan solo como atajo de debug, no hace
+## falta tocarlas para jugar.
 
 const SPEED := 220.0
 const DEFAULT_STYLE_PATH := "res://resources/styles/fuego.tres"
@@ -192,6 +193,16 @@ var _zone_charging: bool = false
 var _zone_charge_time: float = 0.0
 var _zone_preview: Node2D = null
 
+# --- Sellos (R mantenido, secuencia de 3 direccionales) -------------------
+## Tecnica oculta de pergamino (H6): mantener R inmoviliza al jugador (ver
+## _handle_movement) y captura hasta 3 pulsaciones direccionales. Soltar R
+## antes de completar 3 cancela sin efecto. A diferencia de la Zona (que deja
+## moverse mientras se carga con Q), este es el "momento de riesgo" del
+## brief -- por eso bloquea movimiento, cosa que Zona no hace.
+var _sellos_charging: bool = false
+var _sellos_directions: Array[String] = []
+const SELLOS_SECUENCIA_LONGITUD := 3
+
 # --- Impulso ---
 var _impulse_cooldown_remaining: float = 0.0
 var _impulse_active_time: float = 0.0
@@ -335,6 +346,8 @@ func _apply_style_reset() -> void:
 		_zone_preview.queue_free()
 		_zone_preview = null
 	_zone_charging = false
+	_sellos_charging = false
+	_sellos_directions.clear()
 	grabbed_enemy_path = NodePath("")
 	# Color base de torso/piernas segun el estilo actual -- recalculado aqui
 	# (arranque y cada cambio de estilo del debug 1/2/3) para que las Puertas
@@ -441,6 +454,7 @@ func _physics_process(delta: float) -> void:
 		if style_data.melee_only:
 			_handle_puertas(delta)
 		_handle_zone_input(delta)
+		_handle_sellos_input()
 		_process_grab_hold()
 		_process_carry_hold()
 		if Input.is_action_just_pressed("attack_basic"):
@@ -534,6 +548,12 @@ func _handle_movement() -> void:
 	if _impulse_active_time > 0.0 or _potenciador_dash_active_time > 0.0:
 		# El Impulso (y el dash del Potenciador de Viento) mueven al jugador
 		# directamente por posicion; el WASD no debe pelearse con el dash.
+		velocity = Vector2.ZERO
+		return
+	if _sellos_charging:
+		# Brief: "inmovil mientras las haces" -- las direccionales que se
+		# pulsan aqui alimentan la secuencia (ver _handle_sellos_input), no
+		# mueven al jugador.
 		velocity = Vector2.ZERO
 		return
 	var input_dir := Vector2(
@@ -1454,6 +1474,106 @@ func _spawn_impulse_trail(from_pos: Vector2, to_pos: Vector2) -> void:
 		zone.participates_in_combo = false
 		effects_root.add_child(zone)
 		zone.global_position = from_pos.lerp(to_pos, t)
+
+# =========================================================================
+# Sellos -- mantener R, secuencia de 3 direccionales, tecnica oculta.
+# =========================================================================
+
+## Corre cada fotograma para la autoridad del personaje (ver _physics_process,
+## igual que _handle_zone_input). Mantener R inmoviliza (ver _handle_movement)
+## y captura hasta 3 pulsaciones direccionales; soltar R antes de completar 3
+## cancela sin efecto.
+func _handle_sellos_input() -> void:
+	if Input.is_action_just_pressed("sellos") and not _zone_charging and _get_grabbed_enemy() == null:
+		_sellos_charging = true
+		_sellos_directions.clear()
+	if not _sellos_charging:
+		return
+	if Input.is_action_just_released("sellos"):
+		_sellos_charging = false
+		_sellos_directions.clear()
+		return
+	var dir := ""
+	if Input.is_action_just_pressed("move_left"):
+		dir = "left"
+	elif Input.is_action_just_pressed("move_right"):
+		dir = "right"
+	elif Input.is_action_just_pressed("move_up"):
+		dir = "up"
+	elif Input.is_action_just_pressed("move_down"):
+		dir = "down"
+	if dir == "":
+		return
+	_sellos_directions.append(dir)
+	if _sellos_directions.size() >= SELLOS_SECUENCIA_LONGITUD:
+		_sellos_charging = false
+		var secuencia := _sellos_directions.duplicate()
+		_sellos_directions.clear()
+		submit_sellos_technique.rpc_id(1, secuencia, get_global_mouse_position())
+
+## secuencia va sin usar por ahora (el host solo comprueba que este completa):
+## se manda igual porque el sistema de pergaminos futuro (casino-agent) la
+## necesitara para decidir QUE tecnica sale de cada combinacion direccional;
+## hasta que exista, cada estilo tiene una unica tecnica fija en su
+## StyleData (ver comentario de cabecera de style_data.gd, grupo "Sellos").
+@rpc("any_peer", "call_local", "reliable")
+func submit_sellos_technique(secuencia: Array, aim_point: Vector2) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if secuencia.size() < SELLOS_SECUENCIA_LONGITUD:
+		return # secuencia incompleta o manipulada -- se ignora sin penalizar
+	var usa_chakra: bool = style_data.chakra_max > 0.0
+	if usa_chakra and chakra_current < style_data.sellos_chakra_cost:
+		return
+	var new_chakra: float = chakra_current - style_data.sellos_chakra_cost if usa_chakra else chakra_current
+	var damage_type := _basic_damage_type()
+	var mult: float = _current_damage_multiplier()
+
+	if style_data.melee_only:
+		# Fisico: cono como el Basico/Agarre (sin chakra que gastar), golpe
+		# unico mucho mas fuerte que el Basico.
+		var facing_dir: Vector2 = aim_point - global_position
+		if facing_dir.length() < 0.001:
+			facing_dir = Vector2.RIGHT.rotated(_torso.rotation)
+		facing_dir = facing_dir.normalized()
+		var damage: float = style_data.sellos_fisico_damage * mult
+		for enemigo in _find_enemies_in_cone(style_data.sellos_fisico_range, style_data.sellos_fisico_cone_degrees, facing_dir):
+			if enemigo.has_method("recibir_daño"):
+				enemigo.recibir_daño(damage_type, damage)
+	elif style_data.element_name == "agua":
+		# Agua: sin daño de area -- cura de golpe, aplicada en
+		# confirm_sellos_technique (mismo patron que el resto de curas, que
+		# corren en todos los peers via RPC en vez de solo en el host).
+		pass
+	else:
+		# Fuego (nova), Rayo (descarga), Tierra (puño sismico): area simple
+		# alrededor del jugador, solo cambia el damage_type. Viento ademas
+		# arrastra de golpe a quien alcance hacia el punto de origen.
+		var damage: float = style_data.sellos_damage * mult
+		var pull_distance: float = 0.0
+		if style_data.element_name == "viento":
+			pull_distance = style_data.sellos_viento_pull_distance
+		for enemigo in get_tree().get_nodes_in_group(GRUPO_ENEMIGOS):
+			if not (enemigo is Node2D):
+				continue
+			var dist: float = global_position.distance_to(enemigo.global_position)
+			if dist > style_data.sellos_radius:
+				continue
+			if pull_distance > 0.0:
+				enemigo.global_position = enemigo.global_position.move_toward(global_position, min(pull_distance, dist))
+			if enemigo.has_method("recibir_daño"):
+				enemigo.recibir_daño(damage_type, damage)
+
+	confirm_sellos_technique.rpc(new_chakra)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_sellos_technique(new_chakra: float) -> void:
+	chakra_current = new_chakra
+	if style_data.element_name == "agua":
+		vida_actual = min(vida_actual + style_data.sellos_agua_self_heal, style_data.vida_maxima)
+	trigger_hit_shake(SCREEN_SHAKE_ATTACK_STRENGTH * 1.5)
 
 # =========================================================================
 # Puertas (solo Fisico) -- mantener F.
