@@ -170,6 +170,7 @@ var _apuesta_monto: float = 20.0
 ## style_data.projectile_chakra_cost (15-20 tipico).
 const TRAMPA_DADOS_CHAKRA_COST := 15.0
 const CARTAS_RAYO_CHAKRA_COST := 20.0
+const CARTAS_SELLOS_CHAKRA_COST := 20.0
 ## Sospecha ganada por cada uso de trampa (H6) -- ver NetworkManager
 ## SOSPECHA_AMBAR_UMBRAL/SOSPECHA_ROJO_UMBRAL para los tramos. La de Cartas
 ## es menor porque su ventaja (elegir entre dos cartas) es mas modesta que
@@ -2245,7 +2246,8 @@ func confirm_girar_ruleta(nuevo_limpio: float, nuevo_manchado: float, moneda: St
 
 func _request_jugar_cartas() -> void:
 	var usar_rayo := Input.is_action_pressed("trampa_rayo_cartas")
-	submit_jugar_cartas.rpc_id(1, _apuesta_moneda, _apuesta_monto, usar_rayo)
+	var usar_sellos := Input.is_action_pressed("trampa_sellos_cartas")
+	submit_jugar_cartas.rpc_id(1, _apuesta_moneda, _apuesta_monto, usar_rayo, usar_sellos)
 
 ## Poker simplificado a carta mas alta contra 3 NPC (ver
 ## cartas_selladas.gd). `usar_rayo` pide la trampa de Rayo -- adaptacion de
@@ -2254,7 +2256,7 @@ func _request_jugar_cartas() -> void:
 ## slice, ver comentario de cabecera de cartas_selladas.gd). Sube sospecha
 ## igual que la trampa de Viento en la Mesa de Dados.
 @rpc("any_peer", "call_local", "reliable")
-func submit_jugar_cartas(moneda: String, monto: float, usar_rayo: bool) -> void:
+func submit_jugar_cartas(moneda: String, monto: float, usar_rayo: bool, usar_sellos: bool) -> void:
 	if not multiplayer.is_server():
 		return
 	if not _validate_sender():
@@ -2291,7 +2293,33 @@ func submit_jugar_cartas(moneda: String, monto: float, usar_rayo: bool) -> void:
 				if nueva_sospecha >= NetworkManager.SOSPECHA_ROJO_UMBRAL:
 					nueva_expulsion = NetworkManager.SOSPECHA_DIAS_EXPULSION * NetworkManager.SOSPECHA_SEGUNDOS_POR_DIA
 					nueva_sospecha = 0.0
-	var resultado := mesa.jugar_mano(hizo_trampa)
+	# Trampa de Sellos (H6, brief "con Sellos puedes ver una carta rival"):
+	# a diferencia de Rayo (atada al estilo Rayo), esta usa la MISMA tecnica
+	# de Sellos que el combate -- cualquier estilo sirve, siempre que su
+	# pergamino ya este comprado (ver NetworkManager.pergaminos_sellos_comprados,
+	# gateado igual que submit_sellos_technique en Task 6). Fisico no paga
+	# chakra (chakra_max = 0), igual que el resto de costes de chakra de este
+	# archivo comprueban usa_chakra en otros sitios.
+	var hizo_trampa_sellos := false
+	if usar_sellos:
+		var comprados_cartas: Dictionary = NetworkManager.pergaminos_sellos_comprados.get(peer_id, {})
+		if not comprados_cartas.get(style_data.element_name, false):
+			confirm_casino_mensaje.rpc("Necesitas el pergamino de Sellos de tu estilo para esa trampa")
+		else:
+			var usa_chakra_sellos: bool = style_data.chakra_max > 0.0
+			var costo_sellos: float = CARTAS_SELLOS_CHAKRA_COST * (2.0 if NetworkManager.sospecha_tramo(peer_id) == "ambar" else 1.0)
+			if usa_chakra_sellos and chakra_current < costo_sellos:
+				confirm_casino_mensaje.rpc("No tienes suficiente chakra para ver la carta rival")
+			else:
+				hizo_trampa_sellos = true
+				hizo_trampa = true
+				if usa_chakra_sellos:
+					nuevo_chakra -= costo_sellos
+				nueva_sospecha = min(NetworkManager.SOSPECHA_MAX, nueva_sospecha + SOSPECHA_POR_TRAMPA_CARTAS)
+				if nueva_sospecha >= NetworkManager.SOSPECHA_ROJO_UMBRAL:
+					nueva_expulsion = NetworkManager.SOSPECHA_DIAS_EXPULSION * NetworkManager.SOSPECHA_SEGUNDOS_POR_DIA
+					nueva_sospecha = 0.0
+	var resultado := mesa.jugar_mano(hizo_trampa, hizo_trampa_sellos)
 	var gano: bool = resultado["gano"]
 	var carta_jugador: int = resultado["carta_jugador"]
 	var mejor_npc: int = resultado["mejor_npc"]
@@ -2323,7 +2351,7 @@ func confirm_jugar_cartas(nuevo_limpio: float, nuevo_manchado: float, moneda: St
 		resultado_texto = "perdiste -%.1f" % apuesta
 	var texto := "Cartas %s (tu %d vs mejor NPC %d): %s (+%.0f fichas)" % [moneda, carta_jugador, mejor_npc, resultado_texto, fichas_ganadas]
 	if hizo_trampa:
-		texto += " [Rayo: elegiste tu mejor carta]"
+		texto += " [trampa]"
 	_status_label.text = texto
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
