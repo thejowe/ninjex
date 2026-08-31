@@ -6,7 +6,19 @@ extends CharacterBody2D
 ## persigue al jugador más cercano si entra en el rango de detección,
 ## y ataca cuerpo a cuerpo con daño por temporizador cuando está en rango.
 ##
-## Este script NO implementa red/multiplayer ni tipos de daño elemental.
+## Red: host-autoritativo, igual que player.gd pero sin fase submit_/confirm_
+## previa porque nadie "pide" mover a un enemigo -- el host decide solo.
+## La IA completa (_physics_process) corre unicamente si is_multiplayer_authority()
+## (el enemigo es un nodo estatico de escena, autoridad por defecto = peer 1 =
+## host). Position/vida_actual/estado se replican a los clientes via el
+## MultiplayerSynchronizer de enemy_simple.tscn -- los clientes NUNCA simulan
+## su propia copia, solo pintan lo que llega. recibir_daño() lo puede seguir
+## llamando cualquier peer local (Basico, Proyectil, Impulso, Lanzamiento,
+## _atacar), pero solo tiene efecto si quien llama es el host (mismo guard que
+## usa player.gd en sus submit_*); la muerte se confirma via RPC (morir.rpc())
+## para que queue_free() se ejecute igual en todos los peers, no solo en el
+## host.
+##
 ## El sistema de combate real (estilos, daño elemental) se construye en otra
 ## tarea en paralelo y llamará a `recibir_daño(tipo_daño, cantidad)` para
 ## aplicar daño a este enemigo; aquí solo se resta la cantidad a la vida.
@@ -69,6 +81,11 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		# Cliente: la posicion/vida/estado llegan por MultiplayerSynchronizer,
+		# no se simula IA local (evitaria desincronizarse del host).
+		return
+
 	if vida_actual <= 0.0:
 		return
 
@@ -178,6 +195,10 @@ func _atacar(jugador: Node2D) -> void:
 ## `tipo_daño` (resistencias, tipos elementales, etc. no son parte de esta
 ## tarea).
 func recibir_daño(tipo_daño: String, cantidad: float) -> void:
+	if not is_multiplayer_authority():
+		# Solo el host aplica daño real; a los clientes les llega el
+		# vida_actual resultante via el MultiplayerSynchronizer.
+		return
 	if vida_actual <= 0.0:
 		return
 
@@ -185,9 +206,14 @@ func recibir_daño(tipo_daño: String, cantidad: float) -> void:
 	daño_recibido.emit(cantidad, vida_actual)
 
 	if vida_actual <= 0.0:
-		morir()
+		morir.rpc()
 
 
+## Solo el host decide morir (llamado desde recibir_daño), pero el RPC se
+## retransmite a todos los peers para que queue_free() borre el enemigo en
+## todos por igual -- si no, los clientes se quedan con un cadaver fantasma
+## que ya no recibe posicion/vida nuevas del synchronizer.
+@rpc("any_peer", "call_local", "reliable")
 func morir() -> void:
 	murio.emit(self)
 	queue_free()

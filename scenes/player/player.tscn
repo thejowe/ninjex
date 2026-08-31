@@ -32,6 +32,7 @@ offset_left = -6.0
 offset_top = -10.0
 offset_right = 14.0
 offset_bottom = 10.0
+pivot_offset = Vector2(10, 10)
 mouse_filter = 2
 color = Color(0.28, 0.55, 0.28, 1)
 
@@ -43,6 +44,7 @@ offset_left = -10.0
 offset_top = -8.0
 offset_right = 10.0
 offset_bottom = 8.0
+pivot_offset = Vector2(10, 8)
 mouse_filter = 2
 color = Color(0.24, 0.36, 0.62, 1)
 
@@ -56,6 +58,24 @@ color = Color(0.9, 0.8, 0.2, 1)
 
 [node name="FX" type="Node2D" parent="Visuals"]
 z_index = 2
+
+[node name="VulnerabilityIndicator" type="ColorRect" parent="Visuals/FX"]
+offset_left = -14.0
+offset_top = -14.0
+offset_right = 14.0
+offset_bottom = 14.0
+mouse_filter = 2
+color = Color(1, 0.15, 0.15, 0.35)
+visible = false
+
+[node name="PotenciadorIndicator" type="ColorRect" parent="Visuals/FX"]
+offset_left = -12.0
+offset_top = -12.0
+offset_right = 12.0
+offset_bottom = 12.0
+mouse_filter = 2
+color = Color(1, 0.55, 0.1, 0.55)
+visible = false
 
 [node name="Camera2D" type="Camera2D" parent="."]
 enabled = false

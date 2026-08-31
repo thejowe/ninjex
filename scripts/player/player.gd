@@ -30,7 +30,22 @@ const GRUPO_ENEMIGOS := "enemigos"
 
 @onready var _legs: Node2D = $Visuals/Legs
 @onready var _torso: Node2D = $Visuals/Torso
+@onready var _torso_rect: ColorRect = $Visuals/Torso/TorsoRect
+@onready var _legs_rect: ColorRect = $Visuals/Legs/LegsRect
+@onready var _vulnerability_indicator: ColorRect = $Visuals/FX/VulnerabilityIndicator
+@onready var _potenciador_indicator: ColorRect = $Visuals/FX/PotenciadorIndicator
 @onready var _camera: Camera2D = $Camera2D
+
+# Colores base de TorsoRect/LegsRect (los mismos que trae player.tscn), guardados
+# aqui para poder interpolar hacia el rojo de las Puertas y volver sin
+# depender de leerlos de vuelta del nodo.
+const PUERTAS_TORSO_COLOR_BASE := Color(0.24, 0.36, 0.62, 1.0)
+const PUERTAS_LEGS_COLOR_BASE := Color(0.28, 0.55, 0.28, 1.0)
+const PUERTAS_COLOR_MAX := Color(0.9, 0.15, 0.15, 1.0)
+const PUERTAS_SCALE_PER_LEVEL := 0.12
+
+const POTENCIADOR_COLOR_FUEGO := Color(1.0, 0.55, 0.1, 0.55)
+const POTENCIADOR_COLOR_VIENTO := Color(0.35, 0.9, 0.45, 0.55)
 
 ## Chakra actual. Lo fija el host via confirm_*(); nunca sube solo con el
 ## tiempo (no hay _process que lo regenere). En Fisico se queda siempre a 0
@@ -133,6 +148,9 @@ func _apply_style_reset() -> void:
 		_zone_preview = null
 	_zone_charging = false
 	grabbed_enemy_path = NodePath("")
+	_update_puertas_visual()
+	_update_vulnerability_visual()
+	_update_potenciador_visual()
 
 func _physics_process(delta: float) -> void:
 	if is_multiplayer_authority():
@@ -194,6 +212,7 @@ func _handle_vulnerability(delta: float) -> void:
 		_vulnerabilidad_restante -= delta
 		if _vulnerabilidad_restante <= 0.0:
 			_vulnerabilidad_multiplicador = 1.0
+			_update_vulnerability_visual()
 
 func _handle_impulse_cooldown(delta: float) -> void:
 	if _impulse_cooldown_remaining > 0.0:
@@ -214,6 +233,7 @@ func _handle_potenciador_timer(delta: float) -> void:
 			_potenciador_active_element = ""
 			_potenciador_caster_id = 0
 			_potenciador_damage_bonus = 0.0
+			_update_potenciador_visual()
 
 func _process_potenciador_dash(delta: float) -> void:
 	if _potenciador_dash_active_time <= 0.0:
@@ -473,6 +493,7 @@ func confirm_grab(path: NodePath, consume_potenciador: bool) -> void:
 		_potenciador_active_element = ""
 		_potenciador_caster_id = 0
 		_potenciador_damage_bonus = 0.0
+		_update_potenciador_visual()
 	if multiplayer.is_server():
 		_schedule_grab_release(target, style_data.grab_hold_duration)
 
@@ -728,6 +749,7 @@ func submit_puertas_level_up() -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_puertas_state(nivel: int) -> void:
 	puertas_nivel = nivel
+	_update_puertas_visual()
 
 @rpc("any_peer", "call_local", "reliable")
 func submit_puertas_close(tiempo_abierto: float) -> void:
@@ -745,6 +767,25 @@ func confirm_puertas_close(vulnerabilidad_segundos: float) -> void:
 	_puertas_tiempo_abierto_total = 0.0
 	_vulnerabilidad_restante = vulnerabilidad_segundos
 	_vulnerabilidad_multiplicador = style_data.puertas_vulnerability_damage_multiplier
+	_update_puertas_visual()
+	_update_vulnerability_visual()
+
+## Escala y tine TorsoRect/LegsRect segun puertas_nivel (mas rojo/mas grande
+## por nivel); en nivel 0 vuelve a los colores/escala base de player.tscn.
+func _update_puertas_visual() -> void:
+	var max_nivel: float = float(max(style_data.puertas_niveles_max, 1))
+	var ratio: float = clamp(float(puertas_nivel) / max_nivel, 0.0, 1.0)
+	var target_scale := Vector2.ONE * (1.0 + ratio * PUERTAS_SCALE_PER_LEVEL)
+	_torso_rect.scale = target_scale
+	_legs_rect.scale = target_scale
+	_torso_rect.color = PUERTAS_TORSO_COLOR_BASE.lerp(PUERTAS_COLOR_MAX, ratio)
+	_legs_rect.color = PUERTAS_LEGS_COLOR_BASE.lerp(PUERTAS_COLOR_MAX, ratio)
+
+## Indicador de vulnerabilidad tras cerrar las Puertas -- distinto del tinte
+## de nivel de arriba, para no confundir "Puertas abiertas" con "acabo de
+## cerrarlas y ahora recibo mas daño".
+func _update_vulnerability_visual() -> void:
+	_vulnerability_indicator.visible = _vulnerabilidad_restante > 0.0
 
 # =========================================================================
 # Potenciador -- E. Se lanza sobre un aliado, nunca sobre uno mismo. Solo
@@ -767,10 +808,16 @@ func submit_potenciador() -> void:
 	if style_data.melee_only:
 		return
 	if chakra_current < style_data.potenciador_chakra_cost:
+		# Mismo problema que el cono vacio de abajo: sin aviso, un E sin
+		# chakra suficiente es indistinguible de "esta roto".
+		confirm_potenciador_failed.rpc("chakra insuficiente")
 		return
 	var facing_dir: Vector2 = Vector2.RIGHT.rotated(_torso.rotation)
 	var candidates := _find_allies_in_cone(style_data.potenciador_range, style_data.potenciador_cone_degrees, facing_dir)
 	if candidates.is_empty():
+		# Sin esto, un E que no encuentra a nadie en el cono no da ninguna
+		# señal -- indistinguible de "esta roto" para quien lo pulsa.
+		confirm_potenciador_failed.rpc("no hay ningun aliado en rango")
 		return
 	var target: Node2D = candidates[0]
 	var best_dist: float = global_position.distance_to(target.global_position)
@@ -800,6 +847,17 @@ func submit_potenciador() -> void:
 func confirm_potenciador_cast(new_chakra: float) -> void:
 	chakra_current = new_chakra
 
+## Aviso de fallo al que pidio el Potenciador: sin chakra suficiente o sin
+## ningun aliado en el cono. Se manda desde el host sobre el propio nodo del
+## que lo lanzo (misma instancia que corre en todos los peers); solo el peer
+## dueno actua para no llenar la consola del resto. Placeholder de sonido: no
+## hay audio en el proyecto todavia, se deja el log como feedback minimo.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_potenciador_failed(motivo: String) -> void:
+	if not is_multiplayer_authority():
+		return
+	print("Potenciador fallido: ", motivo)
+
 ## Se ejecuta en el jugador OBJETIVO (no en quien lo lanzo). caster_pos es
 ## la posicion del que lo lanzo en el momento del cast, usada solo por el
 ## dash de Viento.
@@ -809,8 +867,23 @@ func confirm_potenciador_received(element: String, duration: float, caster_id: i
 	_potenciador_time_remaining = duration
 	_potenciador_caster_id = caster_id
 	_potenciador_damage_bonus = damage_bonus
+	_update_potenciador_visual()
 	if element == "viento" and dash_distance > 0.0:
 		_start_potenciador_dash(caster_pos, dash_distance, dash_travel_time)
+
+## Glow naranja (Fuego) / estela verde (Viento) mientras el Potenciador
+## recibido siga activo; se apaga solo cuando expira (_handle_potenciador_timer)
+## o se consume de golpe (bonus de Agarre del Fisico, ver confirm_grab).
+func _update_potenciador_visual() -> void:
+	match _potenciador_active_element:
+		"fuego":
+			_potenciador_indicator.color = POTENCIADOR_COLOR_FUEGO
+			_potenciador_indicator.visible = true
+		"viento":
+			_potenciador_indicator.color = POTENCIADOR_COLOR_VIENTO
+			_potenciador_indicator.visible = true
+		_:
+			_potenciador_indicator.visible = false
 
 ## Viento: dash instantaneo hacia quien lanzo el Potenciador (cierra
 ## distancia volando). Se detiene un poco antes de llegar encima del
@@ -837,10 +910,19 @@ func confirm_potenciador_chakra_return(new_chakra: float) -> void:
 # Vida / danio entrante.
 # =========================================================================
 
-## Llamado por enemy_simple.gd cuando ataca cuerpo a cuerpo. Nota: los
-## enemigos no estan en red todavia, asi que en una partida con un segundo
-## jugador real cada peer simula sus propios enemigos por separado y esto
-## puede desincronizarse -- limitacion conocida, fuera de esta tanda
-## (queda para la tarea de "enemigos en red" / segundo jugador real).
-func recibir_daño(_tipo_daño: String, cantidad: float) -> void:
+## Llamado por enemy_simple.gd cuando ataca cuerpo a cuerpo. Los enemigos ya
+## estan en red (host-autoritativo, ver enemy_simple.gd): _atacar() solo
+## corre en el host, asi que el guard de abajo siempre deja pasar la llamada
+## real y solo retransmite -- pero se deja explicito por si en el futuro
+## algun peer local llega a llamar esto por error (amistoso-fuego, etc.).
+func recibir_daño(tipo_daño: String, cantidad: float) -> void:
+	if not multiplayer.is_server():
+		return
+	confirm_damage_taken.rpc(tipo_daño, cantidad)
+
+## Aplica el daño igual en todos los peers (incluido el host, call_local).
+## Sin esto, recibir_daño() solo mutaba la copia local del host y nunca
+## llegaba al peer dueño del personaje -- vida_actual se desincronizaba.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_damage_taken(_tipo_daño: String, cantidad: float) -> void:
 	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador, 0.0)
