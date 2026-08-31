@@ -533,6 +533,8 @@ func _physics_process(delta: float) -> void:
 			_request_comprar_almacen()
 		if Input.is_action_just_pressed("casa_comprar_jardin"):
 			_request_comprar_jardin()
+		if Input.is_action_just_pressed("comprar_pergamino"):
+			_request_comprar_pergamino()
 	move_and_slide()
 
 ## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
@@ -624,7 +626,7 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_ruleta_in_range(CASINO_RANGE) != null:
 		texto = "Apuesta %.0f %s a la Rueda del Clan -- Z rojo, K azul, O oro, N clan (+/- ajusta, M cambia moneda)" % [_apuesta_monto, _apuesta_moneda]
 	elif _find_nearest_cartas_selladas_in_range(CASINO_RANGE) != null:
-		texto = "Apuesta %.0f %s en Cartas Selladas -- 7 juega (mantén 8 con Rayo para trampa)" % [_apuesta_monto, _apuesta_moneda]
+		texto = "Apuesta %.0f %s en Cartas Selladas -- 7 juega (mantén 8 con Rayo o / con Sellos para trampa)" % [_apuesta_monto, _apuesta_moneda]
 	elif _find_nearest_peleas_sotano_in_range(CASINO_RANGE) != null:
 		texto = "Apuesta %.0f %s en las Peleas del Sotano -- , izquierda, . derecha" % [_apuesta_monto, _apuesta_moneda]
 	elif _find_nearest_usurero_in_range(CASINO_RANGE) != null:
@@ -639,6 +641,9 @@ func _update_interaction_hint() -> void:
 		texto = "Pulsa R para cambiar tu tinte"
 	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
 		texto = "Casa del equipo -- ; Cocina, [ Almacen, ] Jardin"
+	elif _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE) != null:
+		var tienda_hint := _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE)
+		texto = "Pulsa 0 para comprar el pergamino de %s (%.0f fichas)" % [style_data.style_name, tienda_hint.precio_pergamino]
 	_interaction_label.text = texto
 
 func _handle_combo_timer(delta: float) -> void:
@@ -1048,6 +1053,20 @@ func _find_nearest_peleas_sotano_in_range(range_max: float) -> PeleasSotano:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = p
+	return nearest
+
+## Tienda de Pergaminos mas cercana dentro de range_max. Misma proximidad
+## simple que las funciones de arriba.
+func _find_nearest_tienda_pergaminos_in_range(range_max: float) -> TiendaPergaminos:
+	var nearest: TiendaPergaminos = null
+	var best_dist: float = INF
+	for t in get_tree().get_nodes_in_group(TiendaPergaminos.GRUPO_TIENDAS_PERGAMINOS):
+		if not (t is TiendaPergaminos):
+			continue
+		var dist: float = global_position.distance_to(t.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = t
 	return nearest
 
 func _validate_sender() -> bool:
@@ -2603,6 +2622,55 @@ func confirm_sastreria_tinte(peer_id: int, indice: int, nuevo_limpio: float) -> 
 	_visuals.modulate = Sastreria.PALETA_TINTES[indice]
 	_status_label.modulate = Color(1, 1, 1)
 	_status_label.text = "Tinte cambiado"
+
+# =========================================================================
+# Tienda de Pergaminos (H6, Muelle Alto) -- tecla 0. Vende el desbloqueo
+# permanente de la tecnica de Sellos de CADA estilo, una compra por estilo y
+# por jugador. A diferencia de Forja/Sastreria (pool compartido de dinero
+# limpio), aqui el gasto tambien es individual: paga con las FICHAS del
+# propio jugador (NetworkManager.fichas), nunca del grupo -- ver comentario
+# de cabecera de NetworkManager.fichas y tienda_pergaminos.gd.
+# =========================================================================
+
+func _request_comprar_pergamino() -> void:
+	submit_comprar_pergamino.rpc_id(1)
+
+## Compra SIEMPRE el pergamino del estilo actualmente equipado (style_data) --
+## mismo criterio de "una sola accion obvia por tecla" que el resto de la
+## economia en este vertical slice sin UI real. Si ya esta comprado para ese
+## estilo, no hace nada (mensaje informativo, no penaliza).
+@rpc("any_peer", "call_local", "reliable")
+func submit_comprar_pergamino() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var tienda := _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE)
+	if tienda == null:
+		confirm_casino_mensaje.rpc("No hay ninguna Tienda de Pergaminos cerca")
+		return
+	var peer_id := get_multiplayer_authority()
+	var estilo_key: String = style_data.element_name
+	var comprados: Dictionary = NetworkManager.pergaminos_sellos_comprados.get(peer_id, {})
+	if comprados.get(estilo_key, false):
+		confirm_casino_mensaje.rpc("Ya tienes el pergamino de %s" % style_data.style_name)
+		return
+	var fichas_actuales: float = NetworkManager.fichas.get(peer_id, 0.0)
+	if fichas_actuales < tienda.precio_pergamino:
+		confirm_casino_mensaje.rpc("Necesitas %.0f fichas para el pergamino de %s" % [tienda.precio_pergamino, style_data.style_name])
+		return
+	var nuevas_fichas: float = fichas_actuales - tienda.precio_pergamino
+	confirm_comprar_pergamino.rpc(estilo_key, nuevas_fichas)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_comprar_pergamino(estilo_key: String, nuevas_fichas: float) -> void:
+	var peer_id := get_multiplayer_authority()
+	var comprados: Dictionary = NetworkManager.pergaminos_sellos_comprados.get(peer_id, {})
+	comprados[estilo_key] = true
+	NetworkManager.pergaminos_sellos_comprados[peer_id] = comprados
+	NetworkManager.fichas[peer_id] = nuevas_fichas
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = "Pergamino comprado: %s (%s)" % [style_data.style_name, style_data.sellos_technique_name]
 
 # =========================================================================
 # Casa del equipo (H5 cierre, Terrazas) -- ; Cocina, [ Almacen, ] Jardin.
