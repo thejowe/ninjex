@@ -1555,6 +1555,21 @@ func submit_sellos_technique(secuencia: Array, aim_point: Vector2) -> void:
 		return
 	if secuencia.size() < SELLOS_SECUENCIA_LONGITUD:
 		return # secuencia incompleta o manipulada -- se ignora sin penalizar
+	# H6: la tecnica de Sellos ya no es gratis por tener el estilo equipado --
+	# hace falta haberla comprado en la Tienda de Pergaminos (ver
+	# NetworkManager.pergaminos_sellos_comprados, player.gd
+	# submit_comprar_pergamino). Las tecnicas de Sellos son las "ocultas" del
+	# brief, no necesarias para avanzar en la historia -- no rompe la regla
+	# invariante de la seccion 4 ("ninguna tecnica necesaria para avanzar esta
+	# detras del casino"). Sin mensaje via confirm_casino_mensaje: a
+	# diferencia de una compra explicita que falla, este es un intento de
+	# usar una tecnica de combate en pleno combate -- igual que la secuencia
+	# incompleta de arriba, se ignora sin penalizar y sin interrumpir el flujo
+	# con un aviso de texto.
+	var peer_id_sellos := get_multiplayer_authority()
+	var comprados_sellos: Dictionary = NetworkManager.pergaminos_sellos_comprados.get(peer_id_sellos, {})
+	if not comprados_sellos.get(style_data.element_name, false):
+		return
 	var usa_chakra: bool = style_data.chakra_max > 0.0
 	if usa_chakra and chakra_current < style_data.sellos_chakra_cost:
 		return
