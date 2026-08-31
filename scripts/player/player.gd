@@ -28,6 +28,11 @@ const GRUPO_ENEMIGOS := "enemigos"
 
 @export var style_data: StyleData
 
+## Sastreria (H5 cierre): el tinte se aplica como modulate de TODO este nodo
+## (torso+piernas a la vez), separado de _torso_color_base/_legs_color_base
+## (que siguen dependiendo solo del elemento) -- ver comentario de cabecera
+## de sastreria.gd.
+@onready var _visuals: Node2D = $Visuals
 @onready var _legs: Node2D = $Visuals/Legs
 @onready var _torso: Node2D = $Visuals/Torso
 @onready var _torso_rect: ColorRect = $Visuals/Torso/TorsoRect
@@ -276,6 +281,14 @@ const SALES_DURATION := 15.0
 const SALES_DRAIN_REDUCTION := 0.5
 var _sales_time_remaining: float = 0.0
 
+# --- Casa del equipo (H5 cierre, Terrazas): reduccion de daño recibido -----
+## Cocina (ver casa_equipo.gd): igual que _potenciador_damage_reduction pero
+## de grupo en vez de recibido de un aliado -- se lee directamente de
+## NetworkManager.cocina_damage_reduction_multiplier en confirm_damage_taken,
+## no hace falta variable local propia (a diferencia del brindis, que si usa
+## NetworkManager.brindis_damage_multiplier directamente en
+## _current_damage_multiplier tambien sin variable local).
+
 func _ready() -> void:
 	if style_data == null:
 		style_data = load(DEFAULT_STYLE_PATH)
@@ -487,6 +500,14 @@ func _physics_process(delta: float) -> void:
 			_request_usar_consumible()
 		if Input.is_action_just_pressed("brindis_taberna"):
 			_request_brindis()
+		if Input.is_action_just_pressed("sastreria_siguiente_tinte"):
+			_request_sastreria_tinte()
+		if Input.is_action_just_pressed("casa_comprar_cocina"):
+			_request_comprar_cocina()
+		if Input.is_action_just_pressed("casa_comprar_almacen"):
+			_request_comprar_almacen()
+		if Input.is_action_just_pressed("casa_comprar_jardin"):
+			_request_comprar_jardin()
 	move_and_slide()
 
 ## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
@@ -582,6 +603,10 @@ func _update_interaction_hint() -> void:
 		texto = "P pildora, H unguento, J bomba de humo, L sales -- I para usar"
 	elif _find_nearest_taberna_in_range(HUB_RANGE) != null:
 		texto = "Pulsa X para el brindis"
+	elif _find_nearest_sastreria_in_range(HUB_RANGE) != null:
+		texto = "Pulsa R para cambiar tu tinte"
+	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
+		texto = "Casa del equipo -- ; Cocina, [ Almacen, ] Jardin"
 	_interaction_label.text = texto
 
 func _handle_combo_timer(delta: float) -> void:
@@ -923,6 +948,32 @@ func _find_nearest_taberna_in_range(range_max: float) -> Taberna:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = t
+	return nearest
+
+## Sastreria mas cercana dentro de range_max. Misma proximidad simple.
+func _find_nearest_sastreria_in_range(range_max: float) -> Sastreria:
+	var nearest: Sastreria = null
+	var best_dist: float = INF
+	for s in get_tree().get_nodes_in_group(Sastreria.GRUPO_SASTRERIAS):
+		if not (s is Sastreria):
+			continue
+		var dist: float = global_position.distance_to(s.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = s
+	return nearest
+
+## Casa del equipo mas cercana dentro de range_max. Misma proximidad simple.
+func _find_nearest_casa_equipo_in_range(range_max: float) -> CasaEquipo:
+	var nearest: CasaEquipo = null
+	var best_dist: float = INF
+	for c in get_tree().get_nodes_in_group(CasaEquipo.GRUPO_CASAS_EQUIPO):
+		if not (c is CasaEquipo):
+			continue
+		var dist: float = global_position.distance_to(c.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = c
 	return nearest
 
 ## Rueda del Clan mas cercana dentro de range_max. Misma proximidad simple
@@ -1653,7 +1704,7 @@ func confirm_damage_taken(_tipo_daño: String, cantidad: float) -> void:
 	# resultado es el mismo en todas las copias de este nodo.
 	if _bomba_humo_time_remaining > 0.0:
 		return
-	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador * _potenciador_damage_reduction, 0.0)
+	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador * _potenciador_damage_reduction * NetworkManager.cocina_damage_reduction_multiplier, 0.0)
 	# Feedback de golpe: flash breve en todos los peers (este RPC ya es
 	# call_local) y sacudida de camara solo en la del propio jugador local.
 	_flash_damage_taken()
@@ -1665,6 +1716,15 @@ func confirm_damage_taken(_tipo_daño: String, cantidad: float) -> void:
 # (a que cadaver/comprador te refieres, cuanto vale) y confirma con un RPC
 # call_local que aplica el resultado igual en todos los peers.
 # =========================================================================
+
+## Tope real de cadaveres cargados: MAX_CADAVERES_CARGADOS mas
+## CasaEquipo.ALMACEN_BONUS_CADAVERES si el grupo ya compro el Almacen (H5
+## cierre, Terrazas) -- ver NetworkManager.casa_equipo_almacen_comprado. Sin
+## niveles (brief: compra unica), asi que no hace falta mas que un bool.
+func _max_cadaveres_cargados() -> int:
+	if NetworkManager.casa_equipo_almacen_comprado:
+		return MAX_CADAVERES_CARGADOS + CasaEquipo.ALMACEN_BONUS_CADAVERES
+	return MAX_CADAVERES_CARGADOS
 
 func _request_toggle_carry() -> void:
 	submit_toggle_carry.rpc_id(1)
@@ -1679,7 +1739,7 @@ func submit_toggle_carry() -> void:
 		return
 	if not _validate_sender():
 		return
-	if carried_cadaver_paths.size() < MAX_CADAVERES_CARGADOS:
+	if carried_cadaver_paths.size() < _max_cadaveres_cargados():
 		var candidate := _find_nearest_free_cadaver(CADAVER_PICKUP_RANGE)
 		if candidate != null:
 			confirm_pickup_cadaver.rpc(candidate.get_path())
@@ -2267,6 +2327,10 @@ func submit_comprar_consumible(tipo: String) -> void:
 	var precio: float = herb.precio_de(tipo)
 	if precio < 0.0:
 		return # tipo invalido, no deberia pasar nunca desde los botones del jugador
+	# Jardin de la Casa del equipo (H5 cierre): descuento fijo sobre el precio
+	# de cualquier consumible, ver comentario de cabecera de casa_equipo.gd.
+	if NetworkManager.casa_equipo_jardin_comprado:
+		precio *= 1.0 - CasaEquipo.JARDIN_DESCUENTO_HERBORISTERIA
 	if NetworkManager.dinero_limpio < precio:
 		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para comprar eso" % precio)
 		return
@@ -2351,3 +2415,130 @@ func submit_brindis() -> void:
 	var multiplicador: float = 1.0 + taberna.brindis_bonus_daño
 	NetworkManager.confirm_brindis.rpc(nuevo_limpio, taberna.brindis_duracion, multiplicador)
 	confirm_casino_mensaje.rpc("Brindis en El Ancla Rota: +%.0f%% de daño para todo el grupo durante %.0f s" % [taberna.brindis_bonus_daño * 100.0, taberna.brindis_duracion])
+
+# =========================================================================
+# Sastreria (H5 cierre, Calle de los Faroles) -- tecla R. Cosmetico puro, sin
+# bonus de ningun tipo (ver comentario de cabecera de sastreria.gd). Mismo
+# patron submit_/confirm_ que Forja: individual por peer_id, pagado del pool
+# compartido de dinero limpio.
+# =========================================================================
+
+func _request_sastreria_tinte() -> void:
+	submit_sastreria_tinte.rpc_id(1)
+
+## Cicla SIEMPRE al siguiente tinte de la paleta (con vuelta al principio) --
+## mismo criterio de "una sola accion obvia por tecla" que el resto de la
+## economia en este vertical slice sin UI real.
+@rpc("any_peer", "call_local", "reliable")
+func submit_sastreria_tinte() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var sastreria := _find_nearest_sastreria_in_range(HUB_RANGE)
+	if sastreria == null:
+		confirm_casino_mensaje.rpc("No hay ninguna sastreria cerca")
+		return
+	if NetworkManager.dinero_limpio < sastreria.precio_tinte:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para cambiar de tinte" % sastreria.precio_tinte)
+		return
+	var peer_id := get_multiplayer_authority()
+	var indice_actual: int = NetworkManager.sastreria_tinte_indice.get(peer_id, -1)
+	var indice_nuevo := (indice_actual + 1) % Sastreria.PALETA_TINTES.size()
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - sastreria.precio_tinte
+	confirm_sastreria_tinte.rpc(peer_id, indice_nuevo, nuevo_limpio)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_sastreria_tinte(peer_id: int, indice: int, nuevo_limpio: float) -> void:
+	NetworkManager.sastreria_tinte_indice[peer_id] = indice
+	NetworkManager.dinero_limpio = nuevo_limpio
+	_visuals.modulate = Sastreria.PALETA_TINTES[indice]
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = "Tinte cambiado"
+
+# =========================================================================
+# Casa del equipo (H5 cierre, Terrazas) -- ; Cocina, [ Almacen, ] Jardin.
+# A diferencia de Forja/Herboristeria/Sastreria (gasto compartido, resultado
+# individual), aqui el resultado TAMBIEN es de grupo -- mismo criterio que
+# la Taberna. Ver comentario de cabecera de casa_equipo.gd para el porque de
+# cada adaptacion (Cocina repetible vs. Almacen/Jardin compra unica, y el
+# bloqueo documentado del Palomar).
+# =========================================================================
+
+func _request_comprar_cocina() -> void:
+	submit_comprar_cocina.rpc_id(1)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_comprar_cocina() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var casa := _find_nearest_casa_equipo_in_range(HUB_RANGE)
+	if casa == null:
+		confirm_casino_mensaje.rpc("No hay ninguna casa del equipo cerca")
+		return
+	if NetworkManager.dinero_limpio < casa.precio_cocina:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para la cocina" % casa.precio_cocina)
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - casa.precio_cocina
+	var reduccion: float = 1.0 - CasaEquipo.COCINA_REDUCCION_DAÑO
+	NetworkManager.confirm_cocina.rpc(nuevo_limpio, CasaEquipo.COCINA_DURACION, reduccion)
+	confirm_casino_mensaje.rpc("Cocina: -%.0f%% de daño recibido para todo el grupo durante %.0f s" % [CasaEquipo.COCINA_REDUCCION_DAÑO * 100.0, CasaEquipo.COCINA_DURACION])
+
+func _request_comprar_almacen() -> void:
+	submit_comprar_almacen.rpc_id(1)
+
+## Compra unica y permanente (brief: "sin niveles") -- si el grupo ya lo
+## compro, no se puede volver a pagar por lo mismo.
+@rpc("any_peer", "call_local", "reliable")
+func submit_comprar_almacen() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var casa := _find_nearest_casa_equipo_in_range(HUB_RANGE)
+	if casa == null:
+		confirm_casino_mensaje.rpc("No hay ninguna casa del equipo cerca")
+		return
+	if NetworkManager.casa_equipo_almacen_comprado:
+		confirm_casino_mensaje.rpc("El Almacen ya esta comprado")
+		return
+	if NetworkManager.dinero_limpio < casa.precio_almacen:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para el Almacen" % casa.precio_almacen)
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - casa.precio_almacen
+	NetworkManager.confirm_comprar_almacen.rpc(nuevo_limpio)
+	confirm_casino_mensaje.rpc("Almacen comprado: +%d cadaveres cargados para todo el grupo" % CasaEquipo.ALMACEN_BONUS_CADAVERES)
+
+func _request_comprar_jardin() -> void:
+	submit_comprar_jardin.rpc_id(1)
+
+## Compra unica y permanente, mismo criterio que el Almacen de arriba.
+@rpc("any_peer", "call_local", "reliable")
+func submit_comprar_jardin() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var casa := _find_nearest_casa_equipo_in_range(HUB_RANGE)
+	if casa == null:
+		confirm_casino_mensaje.rpc("No hay ninguna casa del equipo cerca")
+		return
+	if NetworkManager.casa_equipo_jardin_comprado:
+		confirm_casino_mensaje.rpc("El Jardin ya esta comprado")
+		return
+	if NetworkManager.dinero_limpio < casa.precio_jardin:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para el Jardin" % casa.precio_jardin)
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - casa.precio_jardin
+	NetworkManager.confirm_comprar_jardin.rpc(nuevo_limpio)
+	confirm_casino_mensaje.rpc("Jardin comprado: -%.0f%% en los precios de la Herboristeria" % [CasaEquipo.JARDIN_DESCUENTO_HERBORISTERIA * 100.0])
+
+# Palomar (brief 2.4: "permite rechazar una mision sin penalizacion"): BLOQUEADO.
+# El vertical slice no tiene sistema de misiones/tablon todavia (confirmado,
+# ningun archivo lo menciona) -- "rechazar una mision" no tiene nada que
+# hacer de verdad sin ese sistema. Implementarlo es tarea propia de cuando
+# exista el tablon de misiones real, fuera del alcance de esta tanda. Mismo
+# criterio de documentar un bloqueo que usa cartas_selladas.gd para la
+# trampa de Sellos. No se anade tecla ni estado para esto.

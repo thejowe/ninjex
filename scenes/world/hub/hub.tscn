@@ -3,6 +3,8 @@
 [ext_resource type="PackedScene" path="res://scenes/economy/forja.tscn" id="1_forja"]
 [ext_resource type="PackedScene" path="res://scenes/economy/herboristeria.tscn" id="2_herb"]
 [ext_resource type="PackedScene" path="res://scenes/economy/taberna.tscn" id="3_taberna"]
+[ext_resource type="PackedScene" path="res://scenes/economy/sastreria.tscn" id="4_sastreria"]
+[ext_resource type="PackedScene" path="res://scenes/economy/casa_equipo.tscn" id="5_casa_equipo"]
 
 [sub_resource type="RectangleShape2D" id="Shape_wall_h_1024"]
 size = Vector2(1024, 32)
@@ -297,6 +299,9 @@ position = Vector2(1650, -950)
 [node name="Herboristeria" parent="CalleFaroles" instance=ExtResource("2_herb")]
 position = Vector2(2250, -950)
 
+[node name="Sastreria" parent="CalleFaroles" instance=ExtResource("4_sastreria")]
+position = Vector2(1950, -700)
+
 [node name="Escalera2" type="Node2D" parent="."]
 
 [node name="Floor" type="ColorRect" parent="Escalera2"]
@@ -468,6 +473,9 @@ mouse_filter = 2
 color = Color(0.3, 0.28, 0.35, 1)
 
 [node name="Terrazas" type="Node2D" parent="."]
+
+[node name="CasaEquipo" parent="Terrazas" instance=ExtResource("5_casa_equipo")]
+position = Vector2(1962, -3120)
 
 [node name="Floor" type="ColorRect" parent="Terrazas"]
 offset_left = 1450.0

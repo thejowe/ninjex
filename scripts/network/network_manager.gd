@@ -74,6 +74,14 @@ func next_cadaver_id() -> int:
 ## calcula daño real.
 var forja_nivel: Dictionary = {}
 
+## Tinte de Sastreria (H5 cierre) de CADA jugador -- peer_id -> indice sobre
+## Sastreria.PALETA_TINTES. Mismo patron POR JUGADOR que forja_nivel de
+## arriba: cada peer_id elige su propio tinte con dinero limpio del pool
+## compartido. Sin entrada == sin tinte (color base normal del estilo). Solo
+## lo muta el host, siempre desde dentro de un RPC call_local (player.gd
+## confirm_sastreria_tinte).
+var sastreria_tinte_indice: Dictionary = {}
+
 ## Medidor de sospecha (H6 casino, brief 2.3 / diseno "El casino") -- POR
 ## JUGADOR, no compartido como los pools de dinero: "te vigilan a ti", no al
 ## grupo. Mismo patron que forja_nivel de arriba: Dictionary peer_id ->
@@ -137,12 +145,37 @@ func sospecha_tramo(peer_id: int) -> String:
 var brindis_time_remaining: float = 0.0
 var brindis_damage_multiplier: float = 1.0
 
+## Cocina de la Casa del equipo (H5 cierre, Terrazas): mismo patron que
+## brindis_time_remaining/brindis_damage_multiplier de arriba -- buff de
+## GRUPO temporal, activo para TODOS los jugadores conectados, decae
+## localmente en cada peer via _process() de este autoload (mismo criterio:
+## no hace falta que el segundo exacto de expiracion coincida entre peers).
+## A diferencia del brindis (multiplica el daño que HACES), este reduce el
+## daño que RECIBES -- ver player.gd confirm_damage_taken.
+var cocina_time_remaining: float = 0.0
+var cocina_damage_reduction_multiplier: float = 1.0
+
+## Almacen y Jardin de la Casa del equipo (H5 cierre): compras UNICAS y
+## PERMANENTES del grupo entero (a diferencia de forja_nivel/sastreria_tinte_indice
+## de arriba, que son Dictionary por peer_id, esto es un bool compartido --
+## no hay "quien lo compro", beneficia a todo el grupo por igual, ver
+## comentario de cabecera de casa_equipo.gd). Solo los muta el host, siempre
+## desde dentro de un RPC call_local (player.gd confirm_comprar_almacen /
+## confirm_comprar_jardin).
+var casa_equipo_almacen_comprado: bool = false
+var casa_equipo_jardin_comprado: bool = false
+
 func _process(delta: float) -> void:
 	if brindis_time_remaining > 0.0:
 		brindis_time_remaining -= delta
 		if brindis_time_remaining <= 0.0:
 			brindis_time_remaining = 0.0
 			brindis_damage_multiplier = 1.0
+	if cocina_time_remaining > 0.0:
+		cocina_time_remaining -= delta
+		if cocina_time_remaining <= 0.0:
+			cocina_time_remaining = 0.0
+			cocina_damage_reduction_multiplier = 1.0
 	# Decae la sospecha de cada jugador -- mismo criterio de "no hace falta
 	# que coincida al frame exacto entre peers" que el brindis de arriba.
 	for peer_id in sospecha_expulsado_restante.keys():
@@ -170,6 +203,29 @@ func confirm_brindis(nuevo_limpio: float, duracion: float, multiplicador: float)
 	dinero_limpio = nuevo_limpio
 	brindis_time_remaining = duracion
 	brindis_damage_multiplier = multiplicador
+
+## Confirma la Cocina de la Casa del equipo igual en todos los peers. Vive
+## aqui por el mismo motivo que confirm_brindis de arriba: afecta a TODOS
+## los jugadores conectados, no a un unico personaje. Lo llama el host desde
+## player.gd submit_comprar_cocina().
+@rpc("any_peer", "call_local", "reliable")
+func confirm_cocina(nuevo_limpio: float, duracion: float, reduccion_multiplicador: float) -> void:
+	dinero_limpio = nuevo_limpio
+	cocina_time_remaining = duracion
+	cocina_damage_reduction_multiplier = reduccion_multiplicador
+
+## Confirma la compra unica y permanente de Almacen/Jardin igual en todos los
+## peers. Separados de confirm_cocina porque no llevan duracion ni pool de
+## dinero variable en el momento del disparo -- solo activan el flag una vez.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_comprar_almacen(nuevo_limpio: float) -> void:
+	dinero_limpio = nuevo_limpio
+	casa_equipo_almacen_comprado = true
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_comprar_jardin(nuevo_limpio: float) -> void:
+	dinero_limpio = nuevo_limpio
+	casa_equipo_jardin_comprado = true
 
 func host_game() -> void:
 	# multiplayer.multiplayer_peer NUNCA es null por defecto: Godot le pone un
