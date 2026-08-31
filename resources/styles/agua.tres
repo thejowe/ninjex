@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="StyleData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/styles/style_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+style_name = "Agua"
+element_name = "agua"
+melee_only = false
+chakra_max = 100.0
+chakra_recovered_per_hit = 12.0
+basic_damage = 7.5
+basic_range = 80.0
+basic_cone_degrees = 80.0
+basic_combo_window = 0.6
+basic_tag_duration = 1.5
+projectile_chakra_cost = 15.0
+projectile_speed = 460.0
+projectile_damage = 13.0
+projectile_max_distance = 620.0
+projectile_explosion_radius = 0.0
+projectile_pierces = false
+zone_chakra_cost_min = 28.0
+zone_chakra_cost_max = 50.0
+zone_radius_min = 60.0
+zone_radius_max = 140.0
+zone_charge_time_max = 1.2
+zone_duration = 6.0
+zone_damage_per_second = 0.0
+zone_pull_force = 0.0
+zone_slow_factor = 0.5
+impulse_cooldown = 3.0
+impulse_distance = 180.0
+impulse_travel_time = 0.22
+impulse_trail_duration = 0.0
+impulse_trail_damage_per_second = 0.0
+impulse_ignore_collision_duration = 0.0
+impulse_pierce_damage = 0.0
+impulse_pierce_width = 0.0
+impulse_self_heal = 8.0
+impulse_speed_boost_multiplier = 1.0
+impulse_speed_boost_duration = 0.0
+impulse_shockwave_damage = 0.0
+impulse_shockwave_radius = 0.0
+potenciador_duration = 8.0
+potenciador_chakra_cost = 25.0
+potenciador_range = 110.0
+potenciador_cone_degrees = 50.0
+potenciador_fuego_damage_bonus = 0.0
+potenciador_viento_dash_distance = 0.0
+potenciador_viento_dash_travel_time = 0.0
+potenciador_grab_chakra_return = 20.0
+potenciador_agua_heal_total = 40.0
+potenciador_rayo_speed_multiplier = 1.0
+potenciador_tierra_damage_reduction = 1.0
+vida_maxima = 95.0

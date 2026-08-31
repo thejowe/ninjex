@@ -29,5 +29,11 @@ func _apply_color() -> void:
 			_visual.color = Color(0.65, 0.9, 0.65, 0.9)
 		"fisico":
 			_visual.color = Color(0.85, 0.85, 0.85, 0.9)
+		"agua":
+			_visual.color = Color(0.3, 0.65, 0.95, 0.9)
+		"rayo":
+			_visual.color = Color(0.95, 0.9, 0.3, 0.9)
+		"tierra":
+			_visual.color = Color(0.55, 0.4, 0.2, 0.9)
 		_:
 			_visual.color = Color(1.0, 1.0, 1.0, 0.9)

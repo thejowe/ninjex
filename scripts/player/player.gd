@@ -34,6 +34,9 @@ const GRUPO_ENEMIGOS := "enemigos"
 @onready var _legs_rect: ColorRect = $Visuals/Legs/LegsRect
 @onready var _vulnerability_indicator: ColorRect = $Visuals/FX/VulnerabilityIndicator
 @onready var _potenciador_indicator: ColorRect = $Visuals/FX/PotenciadorIndicator
+@onready var _health_bar_fill: ColorRect = $Visuals/StatusBars/HealthBarFill
+@onready var _chakra_bar_bg: ColorRect = $Visuals/StatusBars/ChakraBarBg
+@onready var _chakra_bar_fill: ColorRect = $Visuals/StatusBars/ChakraBarFill
 @onready var _camera: Camera2D = $Camera2D
 ## Sin HUD real todavia (vertical slice): confirm_vender/confirm_cambiar_dinero/
 ## confirm_apostar_dados solo hacian print() en consola, invisible si se
@@ -48,16 +51,38 @@ const GRUPO_ENEMIGOS := "enemigos"
 ## nada. Ver confirm_casino_mensaje().
 @onready var _status_label: Label = $HUD/StatusLabel
 
-# Colores base de TorsoRect/LegsRect (los mismos que trae player.tscn), guardados
-# aqui para poder interpolar hacia el rojo de las Puertas y volver sin
-# depender de leerlos de vuelta del nodo.
-const PUERTAS_TORSO_COLOR_BASE := Color(0.24, 0.36, 0.62, 1.0)
-const PUERTAS_LEGS_COLOR_BASE := Color(0.28, 0.55, 0.28, 1.0)
+# Colores base de TorsoRect/LegsRect. Antes eran los mismos const fijos que
+# trae player.tscn (siempre verde/azul, sin importar el estilo); ahora son
+# variables porque _apply_style_reset() los recalcula segun
+# style_data.element_name (ver _style_base_colors()) -- se guardan aqui para
+# poder interpolar hacia el rojo de las Puertas y volver sin depender de
+# leerlos de vuelta del nodo, exactamente igual que antes, solo que el punto
+# de partida ya no es siempre el mismo.
+var _torso_color_base := Color(0.24, 0.36, 0.62, 1.0)
+var _legs_color_base := Color(0.28, 0.55, 0.28, 1.0)
 const PUERTAS_COLOR_MAX := Color(0.9, 0.15, 0.15, 1.0)
 const PUERTAS_SCALE_PER_LEVEL := 0.12
 
 const POTENCIADOR_COLOR_FUEGO := Color(1.0, 0.55, 0.1, 0.55)
 const POTENCIADOR_COLOR_VIENTO := Color(0.35, 0.9, 0.45, 0.55)
+const POTENCIADOR_COLOR_AGUA := Color(0.3, 0.65, 0.95, 0.55)
+const POTENCIADOR_COLOR_RAYO := Color(0.95, 0.9, 0.3, 0.55)
+const POTENCIADOR_COLOR_TIERRA := Color(0.55, 0.4, 0.2, 0.55)
+
+# --- Barras de vida/chakra (Visuals/StatusBars en player.tscn) ---
+## Ancho total (a ratio 1.0) del relleno de las barras -- coincide con el
+## offset_left/right de HealthBarFill/ChakraBarFill en player.tscn (32px).
+const STATUS_BAR_WIDTH := 32.0
+
+# --- Screen shake (solo camara local, is_multiplayer_authority) ---
+const SCREEN_SHAKE_DECAY_PER_SECOND := 26.0
+const SCREEN_SHAKE_HIT_STRENGTH := 4.5
+const SCREEN_SHAKE_ATTACK_STRENGTH := 2.5
+var _screen_shake_strength: float = 0.0
+
+# --- Flash de golpe recibido (TorsoRect/LegsRect) ---
+var _torso_flash_tween: Tween = null
+var _legs_flash_tween: Tween = null
 
 ## Chakra actual. Lo fija el host via confirm_*(); nunca sube solo con el
 ## tiempo (no hay _process que lo regenere). En Fisico se queda siempre a 0
@@ -140,6 +165,9 @@ var _impulse_to: Vector2
 ## Viento: mientras > 0, el jugador ignora colisiones (salto largo que
 ## ignora desniveles).
 var _collision_ignore_remaining: float = 0.0
+## Rayo: mientras > 0, aplica style_data.impulse_speed_boost_multiplier tras
+## el Impulso (el "salir disparado" que distingue a Rayo de un simple dash).
+var _impulse_speed_boost_remaining: float = 0.0
 
 # --- Puertas (solo Fisico) ---
 ## 0 = cerradas. 1-3 = nivel actual. Lo fija el host via confirm_puertas_*()
@@ -162,6 +190,17 @@ var _potenciador_time_remaining: float = 0.0
 var _potenciador_caster_id: int = 0
 ## Bonus de dano del Basico mientras el buff de Fuego este activo.
 var _potenciador_damage_bonus: float = 0.0
+## Agua (H6): "sana" -- goteo de curacion mientras el buff este activo.
+## Mismo mecanismo que _unguento_heal_per_second de Herboristeria, pero
+## repartido en la duracion del Potenciador (no en UNGUENTO_DURATION).
+var _potenciador_heal_per_second: float = 0.0
+## Rayo (H6): "da velocidad" -- multiplicador leido por _current_speed_multiplier
+## mientras _potenciador_active_element == "rayo".
+var _potenciador_speed_multiplier: float = 1.0
+## Tierra (H6): "da armadura" -- multiplicador de daño RECIBIDO mientras
+## _potenciador_active_element == "tierra" (opuesto a _vulnerabilidad_multiplicador
+## de las Puertas: aqui reduce en vez de aumentar). Ver confirm_damage_taken.
+var _potenciador_damage_reduction: float = 1.0
 var _potenciador_dash_active_time: float = 0.0
 var _potenciador_dash_total_time: float = 0.0
 var _potenciador_dash_from: Vector2
@@ -243,24 +282,109 @@ func _apply_style_reset() -> void:
 	_potenciador_time_remaining = 0.0
 	_potenciador_caster_id = 0
 	_potenciador_damage_bonus = 0.0
+	_potenciador_heal_per_second = 0.0
+	_potenciador_speed_multiplier = 1.0
+	_potenciador_damage_reduction = 1.0
 	_potenciador_dash_active_time = 0.0
+	_impulse_speed_boost_remaining = 0.0
 	set_collision_mask_value(1, true)
 	if _zone_preview != null:
 		_zone_preview.queue_free()
 		_zone_preview = null
 	_zone_charging = false
 	grabbed_enemy_path = NodePath("")
+	# Color base de torso/piernas segun el estilo actual -- recalculado aqui
+	# (arranque y cada cambio de estilo del debug 1/2/3) para que las Puertas
+	# sigan interpolando desde el color correcto (ver _update_puertas_visual).
+	var base_colors := _style_base_colors()
+	_torso_color_base = base_colors[0]
+	_legs_color_base = base_colors[1]
 	_update_puertas_visual()
 	_update_vulnerability_visual()
 	_update_potenciador_visual()
+	_update_status_bars()
+
+## Color base de TorsoRect/LegsRect segun style_data.element_name. Fuego en
+## tonos rojo/naranja, Viento en cian/blanco verdoso, Fisico en gris/marron
+## (sin elemento chakra); el resto (placeholder, y Agua/Rayo/Tierra que
+## todavia no existen como estilos jugables) se queda con el azul/verde
+## original de player.tscn. Devuelve [color_torso, color_piernas].
+func _style_base_colors() -> Array:
+	match style_data.element_name:
+		"fuego":
+			return [Color(0.75, 0.18, 0.08, 1.0), Color(0.5, 0.22, 0.08, 1.0)]
+		"viento":
+			return [Color(0.55, 0.85, 0.8, 1.0), Color(0.78, 0.95, 0.88, 1.0)]
+		"fisico":
+			return [Color(0.42, 0.42, 0.44, 1.0), Color(0.36, 0.28, 0.2, 1.0)]
+		_:
+			return [Color(0.24, 0.36, 0.62, 1.0), Color(0.28, 0.55, 0.28, 1.0)]
+
+## Ancho del relleno de vida/chakra segun vida_actual/chakra_current -- se
+## llama cada fotograma para TODOS los peers (no solo la autoridad), asi se
+## ven las barras de todos los jugadores conectados, no solo la propia.
+## Fisico tiene chakra_max = 0 (no usa Proyectil/Zona): en ese caso se oculta
+## la barra de chakra en vez de dejarla vacia y "rota" a la vista.
+func _update_status_bars() -> void:
+	var vida_ratio: float = clamp(vida_actual / max(style_data.vida_maxima, 0.001), 0.0, 1.0)
+	_health_bar_fill.size.x = STATUS_BAR_WIDTH * vida_ratio
+	if style_data.chakra_max <= 0.0:
+		_chakra_bar_bg.visible = false
+		_chakra_bar_fill.visible = false
+	else:
+		_chakra_bar_bg.visible = true
+		_chakra_bar_fill.visible = true
+		var chakra_ratio: float = clamp(chakra_current / style_data.chakra_max, 0.0, 1.0)
+		_chakra_bar_fill.size.x = STATUS_BAR_WIDTH * chakra_ratio
+
+## Screen shake breve y sutil, solo visible en la camara del jugador LOCAL
+## (is_multiplayer_authority): al conectar un golpe (Basico/Proyectil/Impulso)
+## o al recibir daño real. strength en pixeles, decae rapido via
+## _process_screen_shake().
+func trigger_hit_shake(strength: float = SCREEN_SHAKE_ATTACK_STRENGTH) -> void:
+	if not is_multiplayer_authority():
+		return
+	_screen_shake_strength = max(_screen_shake_strength, strength)
+
+func _process_screen_shake(delta: float) -> void:
+	if _screen_shake_strength <= 0.05:
+		if _screen_shake_strength != 0.0:
+			_screen_shake_strength = 0.0
+			_camera.offset = Vector2.ZERO
+		return
+	_camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _screen_shake_strength
+	_screen_shake_strength = max(_screen_shake_strength - SCREEN_SHAKE_DECAY_PER_SECOND * delta, 0.0)
+
+## Flash breve de modulate blanco y vuelta al normal (~0.15s) en TorsoRect y
+## LegsRect -- feedback de "acabo de recibir un golpe real". Tween de
+## Godot 4 (create_tween), sin AnimationPlayer. confirm_damage_taken ya corre
+## igual en todos los peers (rpc call_local), asi que llamar esto ahi basta
+## para que se vea igual en todos sin logica de red aparte.
+func _flash_damage_taken() -> void:
+	if _torso_flash_tween != null and _torso_flash_tween.is_valid():
+		_torso_flash_tween.kill()
+	_torso_rect.modulate = Color(1, 1, 1, 1)
+	_torso_flash_tween = create_tween()
+	_torso_flash_tween.tween_property(_torso_rect, "modulate", Color(1.8, 1.8, 1.8, 1.0), 0.03)
+	_torso_flash_tween.tween_property(_torso_rect, "modulate", Color(1, 1, 1, 1), 0.12)
+
+	if _legs_flash_tween != null and _legs_flash_tween.is_valid():
+		_legs_flash_tween.kill()
+	_legs_rect.modulate = Color(1, 1, 1, 1)
+	_legs_flash_tween = create_tween()
+	_legs_flash_tween.tween_property(_legs_rect, "modulate", Color(1.8, 1.8, 1.8, 1.0), 0.03)
+	_legs_flash_tween.tween_property(_legs_rect, "modulate", Color(1, 1, 1, 1), 0.12)
 
 func _physics_process(delta: float) -> void:
+	_update_status_bars()
 	if is_multiplayer_authority():
+		_process_screen_shake(delta)
 		_handle_debug_style_switch()
 		_handle_combo_timer(delta)
 		_handle_vulnerability(delta)
 		_handle_impulse_cooldown(delta)
 		_handle_collision_ignore(delta)
+		_handle_impulse_speed_boost(delta)
 		_handle_potenciador_timer(delta)
 		_handle_unguento(delta)
 		_handle_bomba_humo(delta)
@@ -384,15 +508,26 @@ func _handle_collision_ignore(delta: float) -> void:
 		if _collision_ignore_remaining <= 0.0:
 			set_collision_mask_value(1, true)
 
+func _handle_impulse_speed_boost(delta: float) -> void:
+	if _impulse_speed_boost_remaining > 0.0:
+		_impulse_speed_boost_remaining = max(_impulse_speed_boost_remaining - delta, 0.0)
+
 ## Prediccion local (igual que el resto de timers de estado): cuenta atras
 ## del buff recibido. No hace falta ir al host, solo apaga el flag local.
 func _handle_potenciador_timer(delta: float) -> void:
 	if _potenciador_time_remaining > 0.0:
+		# Agua: goteo de curacion mientras dure el buff -- misma prediccion
+		# local que el resto de este timer (no depende del host cada frame).
+		if _potenciador_heal_per_second > 0.0:
+			vida_actual = min(vida_actual + _potenciador_heal_per_second * delta, style_data.vida_maxima)
 		_potenciador_time_remaining -= delta
 		if _potenciador_time_remaining <= 0.0:
 			_potenciador_active_element = ""
 			_potenciador_caster_id = 0
 			_potenciador_damage_bonus = 0.0
+			_potenciador_heal_per_second = 0.0
+			_potenciador_speed_multiplier = 1.0
+			_potenciador_damage_reduction = 1.0
 			_update_potenciador_visual()
 
 ## Ungüento (H5, Herboristeria): cura por goteo mientras dure. Prediccion
@@ -457,6 +592,12 @@ func _handle_debug_style_switch() -> void:
 		new_path = "res://resources/styles/viento.tres"
 	elif Input.is_action_just_pressed("debug_style_fisico"):
 		new_path = "res://resources/styles/fisico.tres"
+	elif Input.is_action_just_pressed("debug_style_agua"):
+		new_path = "res://resources/styles/agua.tres"
+	elif Input.is_action_just_pressed("debug_style_rayo"):
+		new_path = "res://resources/styles/rayo.tres"
+	elif Input.is_action_just_pressed("debug_style_tierra"):
+		new_path = "res://resources/styles/tierra.tres"
 	if new_path != "":
 		style_data = load(new_path)
 		_apply_style_reset()
@@ -469,6 +610,13 @@ func _current_speed_multiplier() -> float:
 	# breve ademas de la invulnerabilidad (ver confirm_damage_taken).
 	if _bomba_humo_time_remaining > 0.0:
 		mult *= BOMBA_HUMO_SPEED_MULTIPLIER
+	# Rayo: empuje de velocidad propio tras el Impulso.
+	if _impulse_speed_boost_remaining > 0.0:
+		mult *= style_data.impulse_speed_boost_multiplier
+	# Rayo (Potenciador recibido, H6): "da velocidad" -- ver
+	# confirm_potenciador_received.
+	if _potenciador_active_element == "rayo":
+		mult *= _potenciador_speed_multiplier
 	return mult
 
 ## H5 tarea 2: se extiende para multiplicar tambien por el nivel de Forja
@@ -517,6 +665,12 @@ func _basic_damage_type() -> String:
 			return "cortante"
 		"fisico":
 			return "contundente"
+		"rayo":
+			return "electrico"
+		"agua":
+			return "veneno"
+		"tierra":
+			return "aplastamiento"
 		_:
 			return "contundente"
 
@@ -724,16 +878,21 @@ func submit_basic_attack(aim_point: Vector2) -> void:
 		if enemigo.has_method("recibir_daño"):
 			enemigo.recibir_daño(damage_type, damage)
 
-	confirm_basic_attack.rpc(next_combo, new_chakra, spawn_tag, aim_point)
+	confirm_basic_attack.rpc(next_combo, new_chakra, spawn_tag, aim_point, not targets.is_empty())
 
 ## Resultado confirmado por el host. Se aplica en todos los peers por igual.
+## hit_occurred (nuevo, solo para el screen shake) es simplemente si el
+## cono encontro algun enemigo -- no cambia ningun calculo de daño/chakra,
+## solo se lee para disparar la sacudida de camara del propio atacante.
 @rpc("any_peer", "call_local", "reliable")
-func confirm_basic_attack(combo_index: int, new_chakra: float, spawn_tag: bool, aim_point: Vector2) -> void:
+func confirm_basic_attack(combo_index: int, new_chakra: float, spawn_tag: bool, aim_point: Vector2, hit_occurred: bool) -> void:
 	combo_count = combo_index
 	chakra_current = new_chakra
 	_combo_window_timer = style_data.basic_combo_window
 	if spawn_tag:
 		_spawn_status_tag(aim_point)
+	if hit_occurred:
+		trigger_hit_shake()
 
 func _spawn_status_tag(pos: Vector2) -> void:
 	var effects_root: Node = NetworkManager.effects_root
@@ -786,6 +945,10 @@ func confirm_projectile_attack(new_chakra: float, aim_point: Vector2) -> void:
 	proj.max_distance = style_data.projectile_max_distance
 	proj.explosion_radius = style_data.projectile_explosion_radius
 	proj.pierces = style_data.projectile_pierces
+	# Solo para el screen shake local del propio tirador al conectar (ver
+	# projectile.gd _on_body_entered) -- no cambia el calculo de daño, que
+	# sigue siendo exclusivo del host.
+	proj.shooter_peer_id = get_multiplayer_authority()
 	effects_root.add_child(proj)
 	proj.global_position = global_position + dir * 24.0
 
@@ -952,10 +1115,15 @@ func confirm_zone_cast(new_chakra: float, cast_pos: Vector2, radius: float) -> v
 	zone.element = style_data.element_name
 	zone.radius = radius
 	zone.duration = style_data.zone_duration
+	zone.damage_type = _basic_damage_type()
 	if style_data.element_name == "fuego":
 		zone.damage_per_second = style_data.zone_damage_per_second
 	elif style_data.element_name == "viento":
 		zone.pull_force = style_data.zone_pull_force
+	elif style_data.element_name == "rayo":
+		zone.damage_per_second = style_data.zone_damage_per_second
+	elif style_data.element_name == "agua" or style_data.element_name == "tierra":
+		zone.slow_factor = style_data.zone_slow_factor
 	effects_root.add_child(zone)
 	zone.global_position = cast_pos
 
@@ -1017,10 +1185,25 @@ func confirm_impulse(from_pos: Vector2, to_pos: Vector2) -> void:
 		_collision_ignore_remaining = style_data.impulse_ignore_collision_duration
 		set_collision_mask_value(1, false)
 	if style_data.melee_only:
-		if multiplayer.is_server():
-			_apply_impulse_pierce_damage(from_pos, to_pos)
+		# La deteccion (geometria contra la posicion ya sincronizada de cada
+		# enemigo) se calcula igual en todos los peers; solo la APLICACION
+		# del daño sigue reservada al host dentro de la funcion. Se necesita
+		# el resultado aqui, fuera del guard is_server(), para poder disparar
+		# el screen shake en la camara del propio jugador local aunque no
+		# sea el host.
+		if _apply_impulse_pierce_damage(from_pos, to_pos) and is_multiplayer_authority():
+			trigger_hit_shake()
 	elif style_data.element_name == "fuego":
 		_spawn_impulse_trail(from_pos, to_pos)
+	elif style_data.element_name == "rayo":
+		_impulse_speed_boost_remaining = style_data.impulse_speed_boost_duration
+	elif style_data.element_name == "agua":
+		# Prediccion local igual que el Ungüento -- es un coste/beneficio
+		# propio, no hace falta ir al host para curarse de golpe.
+		vida_actual = min(vida_actual + style_data.impulse_self_heal, style_data.vida_maxima)
+	elif style_data.element_name == "tierra":
+		if multiplayer.is_server():
+			_apply_impulse_shockwave(from_pos)
 
 func _process_impulse_motion(delta: float) -> void:
 	if _impulse_active_time <= 0.0:
@@ -1030,17 +1213,33 @@ func _process_impulse_motion(delta: float) -> void:
 	var t_despues: float = 1.0 - clamp(_impulse_active_time / max(style_data.impulse_travel_time, 0.001), 0.0, 1.0)
 	_move_lerp_step(_impulse_from, _impulse_to, t_antes, t_despues)
 
-## Fisico: embestida, atraviesa enemigos en el camino. Solo se llama cuando
-## multiplayer.is_server() es true (dentro de confirm_impulse), asi el
-## danio siempre lo decide el host.
-func _apply_impulse_pierce_damage(from_pos: Vector2, to_pos: Vector2) -> void:
+## Fisico: embestida, atraviesa enemigos en el camino. La APLICACION del
+## daño solo ocurre cuando multiplayer.is_server() es true, asi el danio
+## siempre lo decide el host -- pero la deteccion (y el bool que devuelve)
+## corre igual en cualquier peer, para que el screen shake local del
+## jugador (ver confirm_impulse) funcione aunque no sea el host.
+func _apply_impulse_pierce_damage(from_pos: Vector2, to_pos: Vector2) -> bool:
 	var damage: float = style_data.impulse_pierce_damage * _current_damage_multiplier()
+	var hit_occurred := false
 	for enemigo in get_tree().get_nodes_in_group(GRUPO_ENEMIGOS):
 		if not (enemigo is Node2D):
 			continue
 		var closest: Vector2 = Geometry2D.get_closest_point_to_segment(enemigo.global_position, from_pos, to_pos)
-		if enemigo.global_position.distance_to(closest) <= style_data.impulse_pierce_width and enemigo.has_method("recibir_daño"):
-			enemigo.recibir_daño("contundente", damage)
+		if enemigo.global_position.distance_to(closest) <= style_data.impulse_pierce_width:
+			hit_occurred = true
+			if multiplayer.is_server() and enemigo.has_method("recibir_daño"):
+				enemigo.recibir_daño("contundente", damage)
+	return hit_occurred
+
+## Tierra: onda de choque en el punto de partida del Impulso (antes de
+## desplazarse), daña a los enemigos cercanos. Solo se llama cuando
+## multiplayer.is_server() es true, mismo criterio que _apply_impulse_pierce_damage.
+func _apply_impulse_shockwave(from_pos: Vector2) -> void:
+	var damage: float = style_data.impulse_shockwave_damage * _current_damage_multiplier()
+	for enemigo in get_tree().get_nodes_in_group(GRUPO_ENEMIGOS):
+		if enemigo is Node2D and enemigo.global_position.distance_to(from_pos) <= style_data.impulse_shockwave_radius:
+			if enemigo.has_method("recibir_daño"):
+				enemigo.recibir_daño("aplastamiento", damage)
 
 ## Fuego: paso ardiente, deja un rastro de fuego. Se llama en todos los
 ## peers (visual identico en todos); el danio real de cada fragmento lo
@@ -1138,8 +1337,8 @@ func _update_puertas_visual() -> void:
 	var target_scale := Vector2.ONE * (1.0 + ratio * PUERTAS_SCALE_PER_LEVEL)
 	_torso_rect.scale = target_scale
 	_legs_rect.scale = target_scale
-	_torso_rect.color = PUERTAS_TORSO_COLOR_BASE.lerp(PUERTAS_COLOR_MAX, ratio)
-	_legs_rect.color = PUERTAS_LEGS_COLOR_BASE.lerp(PUERTAS_COLOR_MAX, ratio)
+	_torso_rect.color = _torso_color_base.lerp(PUERTAS_COLOR_MAX, ratio)
+	_legs_rect.color = _legs_color_base.lerp(PUERTAS_COLOR_MAX, ratio)
 
 ## Indicador de vulnerabilidad tras cerrar las Puertas -- distinto del tinte
 ## de nivel de arriba, para no confundir "Puertas abiertas" con "acabo de
@@ -1193,15 +1392,24 @@ func submit_potenciador() -> void:
 	var damage_bonus := 0.0
 	var dash_distance := 0.0
 	var dash_travel_time := 0.0
+	var heal_per_second := 0.0
+	var speed_multiplier := 1.0
+	var damage_reduction := 1.0
 	if style_data.element_name == "fuego":
 		damage_bonus = style_data.potenciador_fuego_damage_bonus
 	elif style_data.element_name == "viento":
 		dash_distance = style_data.potenciador_viento_dash_distance
 		dash_travel_time = style_data.potenciador_viento_dash_travel_time
+	elif style_data.element_name == "agua":
+		heal_per_second = style_data.potenciador_agua_heal_total / max(duration, 0.001)
+	elif style_data.element_name == "rayo":
+		speed_multiplier = style_data.potenciador_rayo_speed_multiplier
+	elif style_data.element_name == "tierra":
+		damage_reduction = style_data.potenciador_tierra_damage_reduction
 	confirm_potenciador_cast.rpc(new_chakra)
 	# RPC sobre OTRO nodo replicado (el objetivo, no self) -- mismo truco que
 	# ya usa el Agarre/Lanzamiento para aplicar el resultado donde toca.
-	target.confirm_potenciador_received.rpc(style_data.element_name, duration, get_multiplayer_authority(), damage_bonus, dash_distance, dash_travel_time, global_position)
+	target.confirm_potenciador_received.rpc(style_data.element_name, duration, get_multiplayer_authority(), damage_bonus, dash_distance, dash_travel_time, global_position, heal_per_second, speed_multiplier, damage_reduction)
 
 @rpc("any_peer", "call_local", "reliable")
 func confirm_potenciador_cast(new_chakra: float) -> void:
@@ -1222,11 +1430,14 @@ func confirm_potenciador_failed(motivo: String) -> void:
 ## la posicion del que lo lanzo en el momento del cast, usada solo por el
 ## dash de Viento.
 @rpc("any_peer", "call_local", "reliable")
-func confirm_potenciador_received(element: String, duration: float, caster_id: int, damage_bonus: float, dash_distance: float, dash_travel_time: float, caster_pos: Vector2) -> void:
+func confirm_potenciador_received(element: String, duration: float, caster_id: int, damage_bonus: float, dash_distance: float, dash_travel_time: float, caster_pos: Vector2, heal_per_second: float, speed_multiplier: float, damage_reduction: float) -> void:
 	_potenciador_active_element = element
 	_potenciador_time_remaining = duration
 	_potenciador_caster_id = caster_id
 	_potenciador_damage_bonus = damage_bonus
+	_potenciador_heal_per_second = heal_per_second
+	_potenciador_speed_multiplier = speed_multiplier
+	_potenciador_damage_reduction = damage_reduction
 	_update_potenciador_visual()
 	if element == "viento" and dash_distance > 0.0:
 		_start_potenciador_dash(caster_pos, dash_distance, dash_travel_time)
@@ -1241,6 +1452,15 @@ func _update_potenciador_visual() -> void:
 			_potenciador_indicator.visible = true
 		"viento":
 			_potenciador_indicator.color = POTENCIADOR_COLOR_VIENTO
+			_potenciador_indicator.visible = true
+		"agua":
+			_potenciador_indicator.color = POTENCIADOR_COLOR_AGUA
+			_potenciador_indicator.visible = true
+		"rayo":
+			_potenciador_indicator.color = POTENCIADOR_COLOR_RAYO
+			_potenciador_indicator.visible = true
+		"tierra":
+			_potenciador_indicator.color = POTENCIADOR_COLOR_TIERRA
 			_potenciador_indicator.visible = true
 		_:
 			_potenciador_indicator.visible = false
@@ -1292,7 +1512,11 @@ func confirm_damage_taken(_tipo_daño: String, cantidad: float) -> void:
 	# resultado es el mismo en todas las copias de este nodo.
 	if _bomba_humo_time_remaining > 0.0:
 		return
-	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador, 0.0)
+	vida_actual = max(vida_actual - cantidad * _vulnerabilidad_multiplicador * _potenciador_damage_reduction, 0.0)
+	# Feedback de golpe: flash breve en todos los peers (este RPC ya es
+	# call_local) y sacudida de camara solo en la del propio jugador local.
+	_flash_damage_taken()
+	trigger_hit_shake(SCREEN_SHAKE_HIT_STRENGTH)
 
 # =========================================================================
 # Cadaveres (H2) -- recoger/soltar con G, vender con V. Mismo patron

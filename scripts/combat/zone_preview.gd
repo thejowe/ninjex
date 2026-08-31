@@ -14,6 +14,19 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	var color: Color = Color(0.95, 0.35, 0.05, 0.6) if element == "fuego" else Color(0.55, 0.85, 0.55, 0.55)
+	var color: Color
+	match element:
+		"fuego":
+			color = Color(0.95, 0.35, 0.05, 0.6)
+		"viento":
+			color = Color(0.55, 0.85, 0.55, 0.55)
+		"agua":
+			color = Color(0.25, 0.6, 0.95, 0.6)
+		"rayo":
+			color = Color(0.95, 0.9, 0.3, 0.6)
+		"tierra":
+			color = Color(0.55, 0.4, 0.2, 0.6)
+		_:
+			color = Color(0.8, 0.8, 0.8, 0.5)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, color, 3.0)
 	draw_circle(Vector2.ZERO, 4.0, color)

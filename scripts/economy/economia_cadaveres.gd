@@ -16,8 +16,8 @@ extends RefCounted
 const MULTIPLICADOR_TIPO_DANO := {
 	"cortante": 1.5,
 	"contundente": 1.0,
-	"veneno": 0.9, # H6 (Sellos/venenos) todavia no genera este tipo de daño en combate -- se deja listo para entonces.
-	"electrico": 0.8, # idem, llega con el estilo Rayo en H6.
+	"veneno": 0.9, # Basico/Proyectil de Agua (H6).
+	"electrico": 0.8, # Basico/Proyectil de Rayo (H6).
 	"aplastamiento": 0.6, # Lanzamiento del Fisico.
 	"quemadura": 0.1, # el fuego carboniza el cuerpo: casi no vale nada.
 }

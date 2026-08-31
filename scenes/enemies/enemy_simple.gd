@@ -71,6 +71,56 @@ var agarrado_por: Node2D = null
 ## impacto (si no, _procesar_persecucion lo sobreescribe el mismo frame).
 var _aturdido_restante: float = 0.0
 
+## Actualiza el ancho del relleno de la barra de vida segun vida_actual/
+## vida_maxima. Se llama cada fotograma para TODOS los peers (host y
+## clientes), no solo la autoridad -- la posicion/vida ya llega sincronizada
+## por el MultiplayerSynchronizer, esto solo la pinta.
+func _update_health_bar() -> void:
+	var ratio: float = clamp(vida_actual / max(vida_maxima, 0.001), 0.0, 1.0)
+	_health_bar_fill.size.x = HEALTH_BAR_WIDTH * ratio
+
+
+## Compara vida_actual con el ultimo valor visto por ESTE peer para detectar
+## que se acaba de recibir daño real y disparar el flash -- ver comentario de
+## _vida_actual_flash_cache arriba.
+func _check_damage_flash() -> void:
+	if _vida_actual_flash_cache < 0.0:
+		_vida_actual_flash_cache = vida_actual
+		return
+	if vida_actual < _vida_actual_flash_cache - 0.001:
+		_flash_hit()
+	_vida_actual_flash_cache = vida_actual
+
+
+## Flash breve de modulate blanco y vuelta al normal (~0.15s) -- feedback de
+## "esto acaba de recibir un golpe real". Tween de Godot 4, sin AnimationPlayer.
+func _flash_hit() -> void:
+	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
+		_hit_flash_tween.kill()
+	_visual.modulate = Color(1, 1, 1, 1)
+	_hit_flash_tween = create_tween()
+	_hit_flash_tween.tween_property(_visual, "modulate", Color(1.8, 1.8, 1.8, 1.0), 0.03)
+	_hit_flash_tween.tween_property(_visual, "modulate", Color(1, 1, 1, 1), 0.12)
+
+
+## H6 (combinaciones de suelo Agua/Tierra): multiplicador de velocidad
+## mientras el enemigo pisa un charco/barro. 1.0 = sin efecto. GroundZone lo
+## refresca cada frame que el enemigo sigue dentro de su Area2D (ver
+## aplicar_slow() y ground_zone.gd _apply_slow()); _slow_refresh_remaining es
+## un temporizador de caducidad, no un simple flag on/off -- evita que el
+## resultado dependa de si la Zona corre su _physics_process antes o
+## despues que este script en el mismo frame (si el enemigo se resetera a
+## si mismo apenas entra el frame, una Zona que procese despues lo pisaria
+## igual; con caducidad, basta con refrescar mientras siga solapando).
+var slow_multiplier: float = 1.0
+var _slow_refresh_remaining: float = 0.0
+## H6 (combinacion Fuego+Agua = vapor / Viento+Tierra = polvo): mientras sea
+## > 0, el enemigo pierde de vista a los jugadores (no persigue ni ataca),
+## igual que si estuviera fuera de rango_deteccion. Lo pone GroundZone al
+## entrar en la nube y lo cuenta atras este script -- el aturdimiento del
+## lanzamiento ya usa el mismo patron de "timer que congela la IA".
+var cegado_restante: float = 0.0
+
 var _tiempo_ataque_restante: float = 0.0
 var _punto_patrulla_a: Vector2
 var _punto_patrulla_b: Vector2
@@ -83,6 +133,18 @@ signal murio(enemigo: Node2D)
 
 @onready var _marcador_a: Marker2D = $PuntoPatrullaA
 @onready var _marcador_b: Marker2D = $PuntoPatrullaB
+@onready var _visual: ColorRect = $Visual
+@onready var _health_bar_fill: ColorRect = $HealthBarFill
+
+const HEALTH_BAR_WIDTH := 28.0
+
+## Ultimo vida_actual visto por ESTE peer (host o cliente), para poder
+## detectar "acabo de recibir daño" a partir del valor ya sincronizado por
+## MultiplayerSynchronizer, en vez de depender de una señal de red aparte.
+## Sin esto, el flash de golpe solo se veria en el host (recibir_daño()
+## solo muta vida_actual alli); asi se ve igual en todos los peers.
+var _vida_actual_flash_cache: float = -1.0
+var _hit_flash_tween: Tween = null
 
 
 func _ready() -> void:
@@ -90,9 +152,12 @@ func _ready() -> void:
 	_punto_patrulla_a = _marcador_a.global_position if _marcador_a else global_position
 	_punto_patrulla_b = _marcador_b.global_position if _marcador_b else global_position
 	add_to_group(GRUPO_ENEMIGOS)
+	_update_health_bar()
 
 
 func _physics_process(delta: float) -> void:
+	_update_health_bar()
+	_check_damage_flash()
 	if not is_multiplayer_authority():
 		# Cliente: la posicion/vida/estado llegan por MultiplayerSynchronizer,
 		# no se simula IA local (evitaria desincronizarse del host).
@@ -116,7 +181,16 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	objetivo_jugador = _buscar_jugador_mas_cercano()
+	if cegado_restante > 0.0:
+		cegado_restante -= delta
+	if _slow_refresh_remaining > 0.0:
+		_slow_refresh_remaining -= delta
+		if _slow_refresh_remaining <= 0.0:
+			slow_multiplier = 1.0
+
+	# Cegado (vapor/polvo): igual que si nadie estuviera en rango_deteccion --
+	# se vuelve a PATRULLA y no ataca hasta que la nube se disipe.
+	objetivo_jugador = null if cegado_restante > 0.0 else _buscar_jugador_mas_cercano()
 
 	match estado:
 		Estado.PATRULLA:
@@ -157,7 +231,7 @@ func _procesar_patrulla() -> void:
 		_patrullando_hacia_b = not _patrullando_hacia_b
 		destino = _punto_patrulla_b if _patrullando_hacia_b else _punto_patrulla_a
 
-	velocity = global_position.direction_to(destino) * velocidad_patrulla
+	velocity = global_position.direction_to(destino) * velocidad_patrulla * slow_multiplier
 
 
 func _procesar_persecucion() -> void:
@@ -172,7 +246,7 @@ func _procesar_persecucion() -> void:
 		velocity = Vector2.ZERO
 		return
 
-	velocity = global_position.direction_to(objetivo_jugador.global_position) * velocidad_persecucion
+	velocity = global_position.direction_to(objetivo_jugador.global_position) * velocidad_persecucion * slow_multiplier
 
 
 func _procesar_ataque(delta: float) -> void:
@@ -200,6 +274,14 @@ func _atacar(jugador: Node2D) -> void:
 	# en paralelo).
 	if jugador.has_method("recibir_daño"):
 		jugador.recibir_daño("fisico", daño_ataque)
+
+
+## H6: lo llama GroundZone (charco/barro/polvo) cada frame que este enemigo
+## sigue dentro de su Area2D. refresh_time > 0 mantiene el efecto activo un
+## rato despues del ultimo toque -- ver comentario de slow_multiplier arriba.
+func aplicar_slow(factor: float, refresh_time: float) -> void:
+	slow_multiplier = factor
+	_slow_refresh_remaining = refresh_time
 
 
 ## Interfaz pública que usará el sistema de combate real (estilos, daño
@@ -241,7 +323,26 @@ func recibir_daño(tipo_daño: String, cantidad: float) -> void:
 func morir(cadaver_id: int, tipo_dano_final: String) -> void:
 	murio.emit(self)
 	_spawn_cadaver(cadaver_id, tipo_dano_final)
+	await _play_death_effect()
 	queue_free()
+
+
+## Efecto breve antes de borrar al enemigo (encogerse + flash blanco + fade)
+## en vez del queue_free() instantaneo de antes -- solo retrasa el borrado
+## con un await corto, igual que _schedule_grab_release en player.gd. Corre
+## identico en todos los peers porque morir() ya es un RPC call_local
+## reliable, asi que el efecto se ve igual en todos.
+func _play_death_effect() -> void:
+	set_physics_process(false)
+	set_collision_layer_value(1, false)
+	set_collision_mask_value(1, false)
+	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
+		_hit_flash_tween.kill()
+	var tween := create_tween()
+	tween.tween_property(_visual, "modulate", Color(2.0, 2.0, 2.0, 1.0), 0.05)
+	tween.tween_property(_visual, "scale", Vector2(0.05, 0.05), 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN).set_delay(0.0)
+	tween.parallel().tween_property(_visual, "modulate:a", 0.0, 0.22)
+	await tween.finished
 
 
 ## Instancia el Cadaver igual en todos los peers. No hay MultiplayerSpawner

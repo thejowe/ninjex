@@ -59,6 +59,41 @@ color = Color(0.9, 0.8, 0.2, 1)
 [node name="FX" type="Node2D" parent="Visuals"]
 z_index = 2
 
+[node name="StatusBars" type="Node2D" parent="Visuals"]
+z_index = 3
+
+[node name="HealthBarBg" type="ColorRect" parent="Visuals/StatusBars"]
+offset_left = -16.0
+offset_top = -34.0
+offset_right = 16.0
+offset_bottom = -30.0
+mouse_filter = 2
+color = Color(0.08, 0.08, 0.08, 0.85)
+
+[node name="HealthBarFill" type="ColorRect" parent="Visuals/StatusBars"]
+offset_left = -16.0
+offset_top = -34.0
+offset_right = 16.0
+offset_bottom = -30.0
+mouse_filter = 2
+color = Color(0.2, 0.9, 0.25, 1)
+
+[node name="ChakraBarBg" type="ColorRect" parent="Visuals/StatusBars"]
+offset_left = -16.0
+offset_top = -29.0
+offset_right = 16.0
+offset_bottom = -26.0
+mouse_filter = 2
+color = Color(0.08, 0.08, 0.08, 0.85)
+
+[node name="ChakraBarFill" type="ColorRect" parent="Visuals/StatusBars"]
+offset_left = -16.0
+offset_top = -29.0
+offset_right = 16.0
+offset_bottom = -26.0
+mouse_filter = 2
+color = Color(0.3, 0.55, 0.95, 1)
+
 [node name="VulnerabilityIndicator" type="ColorRect" parent="Visuals/FX"]
 offset_left = -14.0
 offset_top = -14.0

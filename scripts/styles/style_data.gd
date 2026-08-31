@@ -77,6 +77,13 @@ class_name StyleData
 @export var zone_damage_per_second: float = 12.0
 ## Viento: torbellino, fuerza con la que arrastra enemigos al centro.
 @export var zone_pull_force: float = 220.0
+## Agua/Tierra: charco/barro, multiplica la velocidad de quien pise dentro
+## (1.0 = sin efecto, 0.4 = se mueve al 40%). Mecanismo nuevo de H6 --
+## reutiliza el mismo "quien esta encima, que le pasa" que ya usan
+## damage_per_second (quema) y pull_force (arrastra), pero para ralentizar
+## en vez de daño/empuje. Ver GroundZone._apply_slow() y
+## EnemigoSimple.slow_multiplier.
+@export var zone_slow_factor: float = 1.0
 
 @export_group("Lanzamiento (solo Fisico)")
 ## Sustituye a la Zona: tira al enemigo agarrado hacia el cursor.
@@ -97,6 +104,18 @@ class_name StyleData
 ## Fisico: embestida, atraviesa enemigos en el camino.
 @export var impulse_pierce_damage: float = 16.0
 @export var impulse_pierce_width: float = 34.0
+## Agua: el Impulso es un golpe de corriente que cura un poco al usarlo (no
+## solo movilidad, a diferencia de Fuego/Viento/Fisico que son puro
+## desplazamiento/daño).
+@export var impulse_self_heal: float = 0.0
+## Rayo: tras el Impulso, breve empuje extra de velocidad de movimiento
+## (la sensacion de "salir disparado" que pide el elemento).
+@export var impulse_speed_boost_multiplier: float = 1.0
+@export var impulse_speed_boost_duration: float = 0.0
+## Tierra: al activar el Impulso, onda de choque que daña a los enemigos
+## cercanos al punto de partida (ademas del propio desplazamiento).
+@export var impulse_shockwave_damage: float = 0.0
+@export var impulse_shockwave_radius: float = 0.0
 
 @export_group("Puertas (solo Fisico)")
 ## Mantener F escala nivel 1 -> 2 -> 3 mientras se mantiene abierto.
@@ -137,6 +156,16 @@ class_name StyleData
 ## cualquier elemento) y consigue un Agarre, devuelve esta chakra al peer
 ## que se lo lanzo, y consume el buff.
 @export var potenciador_grab_chakra_return: float = 20.0
+## Agua: "sana" (brief 2.1) -- cura por goteo al objetivo mientras dure el
+## buff, mismo mecanismo que el Unguento de Herboristeria pero repartido en
+## potenciador_duration en vez de UNGUENTO_DURATION.
+@export var potenciador_agua_heal_total: float = 0.0
+## Rayo: "da velocidad" -- multiplicador de velocidad de movimiento del
+## objetivo mientras dure el buff.
+@export var potenciador_rayo_speed_multiplier: float = 1.0
+## Tierra: "da armadura" -- reduce el daño recibido por el objetivo mientras
+## dure el buff (0.7 = recibe 70% del daño normal).
+@export var potenciador_tierra_damage_reduction: float = 1.0
 
 @export_group("Vida")
 @export var vida_maxima: float = 100.0
