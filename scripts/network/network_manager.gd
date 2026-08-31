@@ -27,6 +27,16 @@ var spawn_points: Array[Node2D] = []
 ## autoload). player.gd lo consulta para no dejar abrir dos misiones a la vez
 ## ni volver al hub si no hay ninguna activa.
 var mision_actual: String = ""
+## H6 (narrativa de NPCs, brief 2.4 "Funcion acogedora"): cuantas misiones ha
+## completado el grupo en total. Solo lo muta el host, incrementado dentro de
+## confirm_volver_hub() -- mismo patron host-autoritativo que mision_actual.
+## confirm_volver_hub() solo se llama tras matar al jefe de zona y llegar al
+## punto de extraccion (ver player.gd submit_volver_hub), asi que cada
+## llamada es una vuelta CON EXITO -- no hace falta distinguir derrota, el
+## juego todavia no tiene ese concepto. Los NPCs fijos de la Taberna,
+## Terrazas y Muelle (tabernera.gd/viejo_maestro.gd/pescador.gd) lo leen para
+## elegir su linea de dialogo.
+var misiones_completadas: int = 0
 ## Contenedor donde se instancia la escena de mision activa -- asignado por
 ## main.gd en _ready() (nodo "Misiones", hermano de Hub/TestRoom, colocado
 ## lejos en el mundo para que sus paredes nunca se solapen con las del Hub).
@@ -510,6 +520,7 @@ func confirm_volver_hub() -> void:
 			hijo.queue_free()
 	spawn_points = _spawn_points_previos if not _spawn_points_previos.is_empty() else hub_spawn_points.duplicate()
 	mision_actual = ""
+	misiones_completadas += 1
 	_reposicionar_jugadores()
 
 ## Manda a cada jugador ya conectado al spawn_point que le toca segun su
