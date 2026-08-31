@@ -209,6 +209,20 @@ func sospecha_tramo(peer_id: int) -> String:
 var brindis_time_remaining: float = 0.0
 var brindis_damage_multiplier: float = 1.0
 
+## Pizarra de deudas de la Taberna (H6 extra, ver comentario de cabecera de
+## taberna.gd): a diferencia de usurero_deuda_pendiente (prestamo pedido a
+## proposito en el Usurero), esta deuda nace de FIAR una ronda -- el grupo
+## pide un brindis sin dinero limpio suficiente y la Taberna lo sirve igual,
+## apuntando costo_brindis entero a esta cuenta compartida en vez de
+## bloquear la accion (mismo patron confirm_casino_mensaje que usa el resto
+## del casino). Deliberadamente SIN mecanismo de pago automatico (a
+## diferencia del recorte del Usurero sobre ventas/apuestas): la tarea solo
+## pide fiar + mostrar la deuda en el HUD, no un sistema de cobro -- pagar
+## esta cuenta queda fuera de alcance hasta que se pida explicitamente. Solo
+## lo muta el host, siempre desde dentro de confirm_taberna_fiar (ver
+## player.gd submit_brindis), mismo patron que usurero_deuda_pendiente.
+var taberna_deuda_pendiente: float = 0.0
+
 ## Cocina de la Casa del equipo (H5 cierre, Terrazas): mismo patron que
 ## brindis_time_remaining/brindis_damage_multiplier de arriba -- buff de
 ## GRUPO temporal, activo para TODOS los jugadores conectados, decae
@@ -267,6 +281,17 @@ func confirm_brindis(nuevo_limpio: float, duracion: float, multiplicador: float)
 	dinero_limpio = nuevo_limpio
 	brindis_time_remaining = duracion
 	brindis_damage_multiplier = multiplicador
+
+## Confirma el brindis FIADO igual en todos los peers -- rama nueva de
+## submit_brindis para cuando no hay dinero limpio suficiente (ver
+## taberna_deuda_pendiente arriba). A diferencia de confirm_brindis, NO
+## toca dinero_limpio: el costo entero se apunta a la deuda compartida en
+## vez de salir del pool.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_taberna_fiar(duracion: float, multiplicador: float, nueva_deuda: float) -> void:
+	brindis_time_remaining = duracion
+	brindis_damage_multiplier = multiplicador
+	taberna_deuda_pendiente = nueva_deuda
 
 ## Confirma la Cocina de la Casa del equipo igual en todos los peers. Vive
 ## aqui por el mismo motivo que confirm_brindis de arriba: afecta a TODOS

@@ -613,6 +613,11 @@ func _update_money_label() -> void:
 	# tercer Label solo para esto.
 	if NetworkManager.usurero_deuda_pendiente > 0.0:
 		texto += "  |  Deuda Usurero: -%.0f" % NetworkManager.usurero_deuda_pendiente
+	# Deuda de la Taberna (H6 extra): distinta de la del Usurero de arriba --
+	# ver NetworkManager.taberna_deuda_pendiente. Mismo criterio de "en
+	# negativo" que el resto del HUD de deuda.
+	if NetworkManager.taberna_deuda_pendiente > 0.0:
+		texto += "  |  Deuda Taberna: -%.0f" % NetworkManager.taberna_deuda_pendiente
 	# Aviso de sospecha (H6): solo el propio tramo, igual que el resto de
 	# este Label es informacion del propio jugador, no del grupo.
 	var peer_id := get_multiplayer_authority()
@@ -2671,11 +2676,17 @@ func submit_brindis() -> void:
 	if taberna == null:
 		confirm_casino_mensaje.rpc("No hay ninguna taberna cerca")
 		return
+	var multiplicador: float = 1.0 + taberna.brindis_bonus_daño
 	if NetworkManager.dinero_limpio < taberna.costo_brindis:
-		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para el brindis" % taberna.costo_brindis)
+		# Pizarra de deudas (H6 extra): en vez de bloquear como el resto del
+		# casino, la Taberna fia -- el brindis se activa igual y el costo
+		# entero se apunta a NetworkManager.taberna_deuda_pendiente (deuda de
+		# GRUPO, no del Usurero -- ver su comentario de cabecera).
+		var nueva_deuda: float = NetworkManager.taberna_deuda_pendiente + taberna.costo_brindis
+		NetworkManager.confirm_taberna_fiar.rpc(taberna.brindis_duracion, multiplicador, nueva_deuda)
+		confirm_casino_mensaje.rpc("La Taberna fia esta ronda: +%.0f%% de daño para todo el grupo durante %.0f s (deuda del grupo: -%.0f)" % [taberna.brindis_bonus_daño * 100.0, taberna.brindis_duracion, nueva_deuda])
 		return
 	var nuevo_limpio: float = NetworkManager.dinero_limpio - taberna.costo_brindis
-	var multiplicador: float = 1.0 + taberna.brindis_bonus_daño
 	NetworkManager.confirm_brindis.rpc(nuevo_limpio, taberna.brindis_duracion, multiplicador)
 	confirm_casino_mensaje.rpc("Brindis en El Ancla Rota: +%.0f%% de daño para todo el grupo durante %.0f s" % [taberna.brindis_bonus_daño * 100.0, taberna.brindis_duracion])
 

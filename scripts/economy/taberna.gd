@@ -10,8 +10,12 @@ extends Node2D
 ##
 ## Recorte deliberado de alcance (decision explicita del usuario, ver tarea):
 ## sin "que bebida pidio cada uno" (eso es la parte cosmetica/social
-## descartada), sin desglose de contribucion, sin pizarra de deudas/records.
-## Solo el brindis en si: coste fijo -> buff de grupo temporal simple.
+## descartada), sin desglose de contribucion (bloqueado hasta que exista el
+## concepto real de mision). La pizarra de deudas (fiar el brindis sin
+## fondos, ver NetworkManager.taberna_deuda_pendiente) y la pizarra de
+## records (NetworkManager.record_casino_perdidas/record_cuerpos_destrozados,
+## ver player.gd submit_taberna_ver_records) SI estan implementadas (H6
+## extra de Taberna) -- ya no son un recorte.
 ##
 ## Respeta la misma regla invariante que la Forja (brief seccion 4: "ninguna
 ## mejora permanente supera el +20%"): aunque este buff es TEMPORAL, no
