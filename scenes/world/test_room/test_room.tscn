@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="2_comprador"]
 [ext_resource type="PackedScene" path="res://scenes/economy/cambista.tscn" id="3_cambista"]
 [ext_resource type="PackedScene" path="res://scenes/economy/mesa_dados.tscn" id="4_mesa_dados"]
+[ext_resource type="PackedScene" path="res://scenes/economy/usurero.tscn" id="5_usurero"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1024, 32)
@@ -118,3 +119,6 @@ position = Vector2(120, 650)
 
 [node name="MesaDados" parent="Casino" instance=ExtResource("4_mesa_dados")]
 position = Vector2(900, 650)
+
+[node name="Usurero" parent="Casino" instance=ExtResource("5_usurero")]
+position = Vector2(512, 650)

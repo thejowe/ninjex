@@ -36,6 +36,22 @@ var dinero_manchado: float = 0.0
 ## (player.gd confirm_cambiar_dinero / confirm_apostar_dados).
 var dinero_limpio: float = 0.0
 
+## Deuda con el Usurero (H4 recortado a solo el Usurero -- decision del
+## usuario, sin votacion ni Modo Mesa Alta; ver usurero.gd para el trigger y
+## la adaptacion temporal de "5 misiones" a "5 transacciones que generan
+## dinero"). Mientras > 0, cuenta cuantas transacciones que generan dinero
+## (venta de cadaveres exitosa o apuesta de dados ganada) quedan por pagar
+## con un recorte. Solo lo muta el host, siempre desde dentro de un RPC
+## call_local (player.gd confirm_pedir_prestamo_usurero/confirm_vender/
+## confirm_apostar_dados), mismo patron que dinero_manchado/dinero_limpio.
+var usurero_deuda_transacciones_restantes: int = 0
+
+## Porcentaje de recorte vigente para la deuda activa de arriba, copiado del
+## Usurero.recorte_porcentaje del nodo con el que se pidio el prestamo en el
+## momento de pedirlo -- asi las transacciones que lo pagan despues no
+## necesitan estar cerca de ningun Usurero ni volver a consultar el nodo.
+var usurero_deuda_recorte_porcentaje: float = 0.0
+
 ## Contador de ids de cadaver, solo lo incrementa el host (siempre desde
 ## EnemigoSimple.recibir_daño(), que ya esta filtrado por
 ## is_multiplayer_authority()). El id resultante viaja como argumento del
