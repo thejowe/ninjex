@@ -35,6 +35,18 @@ const GRUPO_ENEMIGOS := "enemigos"
 @onready var _vulnerability_indicator: ColorRect = $Visuals/FX/VulnerabilityIndicator
 @onready var _potenciador_indicator: ColorRect = $Visuals/FX/PotenciadorIndicator
 @onready var _camera: Camera2D = $Camera2D
+## Sin HUD real todavia (vertical slice): confirm_vender/confirm_cambiar_dinero/
+## confirm_apostar_dados solo hacian print() en consola, invisible si se
+## juega el .exe sin terminal abierta. Este Label minimo es el unico
+## feedback en pantalla del dinero compartido -- no es la UI final del
+## hub/taberna (eso es H5), solo lo justo para poder probar H2/H3 sin
+## depender de la consola.
+@onready var _money_label: Label = $HUD/MoneyLabel
+## Ultimo resultado/aviso del casino (exito o fallo silencioso -- "no hay
+## cambista cerca", "no tienes dinero manchado", etc.). Antes esto solo
+## salia por print(), indistinguible en pantalla de que la tecla no hiciera
+## nada. Ver confirm_casino_mensaje().
+@onready var _status_label: Label = $HUD/StatusLabel
 
 # Colores base de TorsoRect/LegsRect (los mismos que trae player.tscn), guardados
 # aqui para poder interpolar hacia el rojo de las Puertas y volver sin
@@ -83,6 +95,21 @@ const CADAVER_CARRY_OFFSET := 34.0
 const CADAVER_CARRY_SPACING := 18.0
 const CADAVER_DROP_OFFSET := 30.0
 const VENTA_RANGE := 80.0
+## Rango de interaccion con los puntos del casino (H3). Mismo valor que
+## VENTA_RANGE de arriba a proposito -- es el mismo tipo de "punto estatico,
+## te acercas y pulsas una tecla" que Comprador, solo que con otro nombre
+## para que quede claro que es un concepto distinto (casino, no venta).
+const CASINO_RANGE := 80.0
+## Con que moneda se apuesta en la mesa de dados ahora mismo: "limpio" o
+## "manchado". El brief define la manchada como "solo cambiable en el
+## casino" (2.3), pero el usuario quiere ademas la via tematica de blanquear
+## dinero JUGANDO en vez de solo pagando la comision del 15% del cambista:
+## apostar manchado directo salta el cambista -- si ganas, blanqueas el
+## doble sin comision; si pierdes, lo pierdes igual que si lo hubieras
+## cambiado y apostado el limpio resultante. Se alterna con la tecla M
+## (toggle_moneda_apuesta), por defecto limpio (el camino "seguro" que
+## sigue el brief al pie de la letra).
+var _apuesta_moneda: String = "limpio"
 ## Peso del botin (brief H2 tarea 4): cada cadaver cargado resta velocidad.
 ## MIN_CARGA_SPEED_RATIO evita que cargar el maximo te deje casi inmovil --
 ## seria un castigo, no una decision interesante.
@@ -147,6 +174,11 @@ func _ready() -> void:
 	if is_multiplayer_authority():
 		_camera.enabled = true
 		_camera.make_current()
+	else:
+		# El HUD de dinero es solo del propio jugador -- ocultarlo en los
+		# personajes de otros peers para no acumular Labels invisibles
+		# encima unos de otros en pantalla.
+		_money_label.get_parent().visible = false
 
 ## Reinicia todo el estado dependiente de estilo. Se llama al arrancar y
 ## cada vez que el debug de playtest cambia de estilo en caliente.
@@ -189,6 +221,7 @@ func _physics_process(delta: float) -> void:
 		_process_potenciador_dash(delta)
 		_handle_movement()
 		_handle_aim()
+		_update_money_label()
 		if style_data.melee_only:
 			_handle_puertas(delta)
 		_handle_zone_input(delta)
@@ -209,7 +242,26 @@ func _physics_process(delta: float) -> void:
 			_request_toggle_carry()
 		if Input.is_action_just_pressed("vender_cadaver"):
 			_request_vender()
+		if Input.is_action_just_pressed("cambiar_dinero"):
+			_request_cambiar_dinero()
+		if Input.is_action_just_pressed("apostar_alto"):
+			_request_apostar_dados("alto")
+		if Input.is_action_just_pressed("apostar_bajo"):
+			_request_apostar_dados("bajo")
+		if Input.is_action_just_pressed("toggle_moneda_apuesta"):
+			_toggle_apuesta_moneda()
 	move_and_slide()
+
+## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
+## con que moneda apostar es una preferencia personal antes de apostar, no
+## una accion que otros jugadores necesiten ver confirmada.
+func _toggle_apuesta_moneda() -> void:
+	_apuesta_moneda = "manchado" if _apuesta_moneda == "limpio" else "limpio"
+	_status_label.modulate = Color(1, 1, 1)
+	if _apuesta_moneda == "manchado":
+		_status_label.text = "Apuesta con MANCHADO (blanquea sin comision si ganas)"
+	else:
+		_status_label.text = "Apuesta con LIMPIO"
 
 func _handle_movement() -> void:
 	if _impulse_active_time > 0.0 or _potenciador_dash_active_time > 0.0:
@@ -230,6 +282,13 @@ func _handle_aim() -> void:
 	var to_cursor := get_global_mouse_position() - global_position
 	if to_cursor.length() > 0.001:
 		_torso.rotation = to_cursor.angle()
+
+## dinero_manchado/dinero_limpio son pools compartidos en NetworkManager
+## (ver network_manager.gd) que ya se actualizan via RPC call_local en
+## confirm_vender/confirm_cambiar_dinero/confirm_apostar_dados -- este Label
+## solo lee su valor actual cada frame, no necesita señal ni RPC propio.
+func _update_money_label() -> void:
+	_money_label.text = "Manchado: %.0f  |  Limpio: %.0f" % [NetworkManager.dinero_manchado, NetworkManager.dinero_limpio]
 
 func _handle_combo_timer(delta: float) -> void:
 	if combo_count > 0:
@@ -392,6 +451,34 @@ func _find_nearest_comprador_in_range(range_max: float) -> Comprador:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = c
+	return nearest
+
+## Cambista mas cercano dentro de range_max. Misma proximidad simple que
+## _find_nearest_comprador_in_range -- el cambista tambien es estatico.
+func _find_nearest_cambista_in_range(range_max: float) -> Cambista:
+	var nearest: Cambista = null
+	var best_dist: float = INF
+	for c in get_tree().get_nodes_in_group(Cambista.GRUPO_CAMBISTAS):
+		if not (c is Cambista):
+			continue
+		var dist: float = global_position.distance_to(c.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = c
+	return nearest
+
+## Mesa de dados mas cercana dentro de range_max. Misma proximidad simple
+## que las funciones de arriba.
+func _find_nearest_mesa_dados_in_range(range_max: float) -> MesaDados:
+	var nearest: MesaDados = null
+	var best_dist: float = INF
+	for m in get_tree().get_nodes_in_group(MesaDados.GRUPO_MESAS_DADOS):
+		if not (m is MesaDados):
+			continue
+		var dist: float = global_position.distance_to(m.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = m
 	return nearest
 
 func _validate_sender() -> bool:
@@ -1066,9 +1153,13 @@ func submit_vender() -> void:
 	if not _validate_sender():
 		return
 	if carried_cadaver_paths.is_empty():
+		# Sin aviso, pulsar V sin cargar nada se ve igual que un boton roto
+		# (mismo motivo que confirm_casino_mensaje en el cambista/dados).
+		confirm_casino_mensaje.rpc("No llevas ningun cadaver que vender (recogelo con G)")
 		return
 	var comprador := _find_nearest_comprador_in_range(VENTA_RANGE)
 	if comprador == null:
+		confirm_casino_mensaje.rpc("No hay ningun comprador cerca")
 		return
 	var total_precio := 0.0
 	var vendidos: Array[NodePath] = []
@@ -1096,5 +1187,113 @@ func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado
 		if cad != null and is_instance_valid(cad):
 			cad.queue_free()
 	NetworkManager.dinero_manchado = nuevo_total
-	# Sin HUD todavia (vertical slice): el print es el feedback de venta.
 	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = "Vendiste %d cadaver(es): +%.0f manchado" % [vendidos.size(), precio_ganado]
+
+# =========================================================================
+# Casino (H3) -- cambista (C) y mesa de dados (T=alto, B=bajo). Mismo patron
+# submit_/confirm_ que el resto del kit: el cliente pide, el host decide
+# (que punto esta en rango, cuanto se gana o se pierde) y confirma con un
+# RPC call_local que aplica el resultado igual en todos los peers.
+# =========================================================================
+
+func _request_cambiar_dinero() -> void:
+	submit_cambiar_dinero.rpc_id(1)
+
+## Cambia TODO el dinero manchado disponible en el pool compartido de una
+## vez (brief H3 tarea 1: "mas simple es cambiar todo el manchado
+## disponible de una vez") -- mismo criterio que "vender todos los
+## cadaveres cargados de golpe" en submit_vender() de arriba.
+@rpc("any_peer", "call_local", "reliable")
+func submit_cambiar_dinero() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var cambista := _find_nearest_cambista_in_range(CASINO_RANGE)
+	if cambista == null:
+		confirm_casino_mensaje.rpc("No hay ningun cambista cerca")
+		return
+	var manchado_disponible: float = NetworkManager.dinero_manchado
+	if manchado_disponible <= 0.0:
+		# Se ignora sin penalizar, pero SI hay que avisar -- si no, pulsar la
+		# tecla sin dinero manchado se ve exactamente igual que un boton
+		# roto (brief: "los dos cuadrados de abajo no hacen nada").
+		confirm_casino_mensaje.rpc("No tienes dinero manchado que cambiar")
+		return
+	var limpio_ganado: float = cambista.calcular_cambio(manchado_disponible)
+	var nuevo_manchado: float = NetworkManager.dinero_manchado - manchado_disponible
+	var nuevo_limpio: float = NetworkManager.dinero_limpio + limpio_ganado
+	confirm_cambiar_dinero.rpc(nuevo_manchado, nuevo_limpio, limpio_ganado)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_cambiar_dinero(nuevo_manchado: float, nuevo_limpio: float, limpio_ganado: float) -> void:
+	NetworkManager.dinero_manchado = nuevo_manchado
+	NetworkManager.dinero_limpio = nuevo_limpio
+	var mensaje: String = "Cambiaste: +%.0f limpio (comision 15%%)" % limpio_ganado
+	print("[Cambista] +%.1f dinero limpio (comision 15%% aplicada, limpio compartido: %.1f, manchado restante: %.1f)" % [limpio_ganado, nuevo_limpio, nuevo_manchado])
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = mensaje
+
+func _request_apostar_dados(eleccion: String) -> void:
+	submit_apostar_dados.rpc_id(1, eleccion, _apuesta_moneda)
+
+## Apuesta la cantidad fija de la mesa (MesaDados.apuesta_fija) a "alto" o
+## "bajo", con la moneda que el jugador tenga seleccionada (tecla M) --
+## "limpio" (el camino que sigue el brief al pie de la letra) o "manchado"
+## (via de blanquear jugando en vez de pagando la comision del Cambista,
+## decision de diseno del usuario, ver _apuesta_moneda arriba). `moneda`
+## solo elige DE QUE POOL sale/entra el dinero -- el host sigue siendo quien
+## calcula el resultado real, asi que el cliente no puede inventarse ni la
+## cantidad ni el resultado, solo pedir con cual de sus dos monederos jugar.
+## Ver mesa_dados.gd para las reglas de las tres caras y el payout. El RNG
+## del resultado corre entero en el host dentro de mesa.resolver_tirada().
+@rpc("any_peer", "call_local", "reliable")
+func submit_apostar_dados(eleccion: String, moneda: String) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if eleccion != "alto" and eleccion != "bajo":
+		return
+	if moneda != "limpio" and moneda != "manchado":
+		return
+	var mesa := _find_nearest_mesa_dados_in_range(CASINO_RANGE)
+	if mesa == null:
+		confirm_casino_mensaje.rpc("No hay ninguna mesa de dados cerca")
+		return
+	var disponible: float = NetworkManager.dinero_limpio if moneda == "limpio" else NetworkManager.dinero_manchado
+	if disponible < mesa.apuesta_fija:
+		# Igual que en el Cambista: sin aviso esto se ve identico a un boton
+		# que no responde.
+		confirm_casino_mensaje.rpc("Necesitas al menos %.0f de dinero %s para apostar" % [mesa.apuesta_fija, moneda])
+		return
+	var resultado := mesa.resolver_tirada(eleccion)
+	var gano: bool = resultado["gano"]
+	var cara: int = resultado["cara"]
+	var delta: float = mesa.apuesta_fija if gano else -mesa.apuesta_fija
+	var nuevo_limpio: float = NetworkManager.dinero_limpio
+	var nuevo_manchado: float = NetworkManager.dinero_manchado
+	if moneda == "limpio":
+		nuevo_limpio += delta
+	else:
+		nuevo_manchado += delta
+	confirm_apostar_dados.rpc(nuevo_limpio, nuevo_manchado, moneda, eleccion, cara, gano, mesa.apuesta_fija)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: String, eleccion: String, cara: int, gano: bool, apuesta: float) -> void:
+	NetworkManager.dinero_limpio = nuevo_limpio
+	NetworkManager.dinero_manchado = nuevo_manchado
+	var resultado_texto: String = ("GANASTE +%.1f" % apuesta) if gano else ("perdiste -%.1f" % apuesta)
+	print("[Dados] Apostaste %s a %s, salio cara %d -> %s (limpio: %.1f, manchado: %.1f)" % [moneda, eleccion, cara, resultado_texto, nuevo_limpio, nuevo_manchado])
+	_status_label.text = "Dados %s (%s, cara %d): %s" % [moneda, eleccion, cara, resultado_texto]
+	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
+
+## Mensaje generico de casino para casos que se ignoran sin penalizar pero
+## que SI hay que comunicar (sin objetivo en rango, fondos insuficientes) --
+## si no, la tecla se ve exactamente igual que un boton roto.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_casino_mensaje(mensaje: String) -> void:
+	_status_label.modulate = Color(1, 1, 1)
+	_status_label.text = mensaje

@@ -29,6 +29,13 @@ var spawn_points: Array[Node2D] = []
 ## RPC de replicacion.
 var dinero_manchado: float = 0.0
 
+## Dinero "limpio" (H3): mismo patron de pool compartido que dinero_manchado
+## de arriba -- se llena cambiando manchado en el Cambista (comision 15%,
+## ver cambista.gd) y se apuesta en la Mesa de Dados (ver mesa_dados.gd).
+## Solo lo muta el host, siempre desde dentro de un RPC call_local
+## (player.gd confirm_cambiar_dinero / confirm_apostar_dados).
+var dinero_limpio: float = 0.0
+
 ## Contador de ids de cadaver, solo lo incrementa el host (siempre desde
 ## EnemigoSimple.recibir_daño(), que ya esta filtrado por
 ## is_multiplayer_authority()). El id resultante viaja como argumento del

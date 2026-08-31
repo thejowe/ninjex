@@ -80,6 +80,32 @@ visible = false
 [node name="Camera2D" type="Camera2D" parent="."]
 enabled = false
 
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="MoneyLabel" type="Label" parent="HUD"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 420.0
+offset_bottom = 40.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 20
+text = "Manchado: 0  |  Limpio: 0"
+
+[node name="StatusLabel" type="Label" parent="HUD"]
+offset_left = 12.0
+offset_top = 40.0
+offset_right = 500.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(1, 0.9, 0.4, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 16
+text = ""
+
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 root_path = NodePath("..")
 replication_config = SubResource("SceneReplicationConfig_player")

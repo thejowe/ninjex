@@ -1,7 +1,9 @@
-[gd_scene load_steps=6 format=3 uid="uid://bqx7h2r5w1n0k"]
+[gd_scene load_steps=8 format=3 uid="uid://bqx7h2r5w1n0k"]
 
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_simple.tscn" id="1_enemy"]
 [ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="2_comprador"]
+[ext_resource type="PackedScene" path="res://scenes/economy/cambista.tscn" id="3_cambista"]
+[ext_resource type="PackedScene" path="res://scenes/economy/mesa_dados.tscn" id="4_mesa_dados"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1024, 32)
@@ -108,3 +110,11 @@ tipo = 0
 [node name="Carnicero" parent="Compradores" instance=ExtResource("2_comprador")]
 position = Vector2(900, 120)
 tipo = 1
+
+[node name="Casino" type="Node2D" parent="."]
+
+[node name="Cambista" parent="Casino" instance=ExtResource("3_cambista")]
+position = Vector2(120, 650)
+
+[node name="MesaDados" parent="Casino" instance=ExtResource("4_mesa_dados")]
+position = Vector2(900, 650)
