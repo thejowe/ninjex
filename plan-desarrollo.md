@@ -35,18 +35,17 @@ Cambista (15 % comisión), Mesa de Dados de tres caras con apuesta ajustable (si
 ### H4 — Bóveda compartida: **✅ hecho, con alcance recortado por decisión explícita del usuario**
 Solo se implementó **el Usurero** (presta cuando `dinero_manchado` y `dinero_limpio` están exactamente a cero, deuda real en negativo que se recorta un 20 % de las próximas 5 ganancias). **La votación grupal, la revelación de votos y el Modo Mesa Alta se descartaron por decisión explícita del usuario**: cualquier jugador del grupo puede apostar del bote común directamente, sin votar ni pedir permiso — la bóveda compartida ya existe de facto en `dinero_manchado`/`dinero_limpio` desde H2/H3. Esto **no es un olvido ni una suposición** — está confirmado en el brief y el diseño (sección "Bóveda compartida, sin votación").
 
-### H5 — Hub, tiendas y taberna: **✅ hecho por completo**
-Hub navegable en 4 alturas (Muelle con Taberna, Calle de los Faroles con Forja/Herboristería/Sastrería, Muelle Alto con el casino completo, Terrazas con la Casa del equipo). Forja (3 niveles de daño, techo +20 % respetado), Herboristería (4 consumibles, máx. 3 cargados), Taberna (brindis compartido: +15 % daño de grupo 180 s), **Sastrería** (tinte cosmético por jugador, sin efecto en balance) y **Casa del equipo** (Cocina: reducción de daño de grupo temporal; Almacén: +2 cadáveres cargables para todo el grupo; Jardín: descuento en Herboristería; Palomar bloqueado — depende del sistema de misiones que todavía no existe). Música/emotes/sillas/pizarra de deudas y récords siguen **sin construir** (nunca se asignaron a ningún agente todavía, no hay decisión de cortarlos — ver todolist).
+### H5 — Hub, tiendas y taberna: **✅ hecho por completo, incluida la capa acogedora**
+Hub navegable en 4 alturas (Muelle con Taberna, Calle de los Faroles con Forja/Herboristería/Sastrería, Muelle Alto con el casino completo, Terrazas con la Casa del equipo). Forja (3 niveles de daño, techo +20 % respetado), Herboristería (4 consumibles, máx. 3 cargados), **Sastrería** (tinte cosmético por jugador, sin efecto en balance) y **Casa del equipo** (Cocina: reducción de daño de grupo temporal; Almacén: +2 cadáveres cargables para todo el grupo; Jardín: descuento en Herboristería; Palomar bloqueado — depende del sistema de misiones, ver abajo, ya existe pero no se ha reenganchado). Taberna completa: brindis (+15 % daño de grupo 180 s), **pizarra de deudas** (fía el brindis sin fondos en vez de bloquear, `NetworkManager.taberna_deuda_pendiente`), **pizarra de récords** (pérdidas en el casino y cuerpos destrozados por jugador), **música diegética comprable** (lista fija de 3 canciones, recorte documentado de "se desbloquean según avanzas") y **emotes/sillas** cosméticos. Sin desglose de contribución todavía (bloqueado: depende del concepto de misión completada, que ya existe desde este mismo hito — candidato a reenganchar en la próxima pasada) ni "quién ha caído más veces" (bloqueado: no hay sistema de muerte/respawn de jugador).
 
-### H6 — Estilos restantes e historia: **✅ combate, casino, arranque de historia y sistema de misión/biomas hechos**, resto **⬜ pendiente**
+### H6 — Estilos restantes e historia: **✅ combate, casino completo, Sellos+pergaminos, prólogo/estilo y sistema de misión/biomas hechos**, resto **⬜ pendiente**
 - **Combate**: Agua, Rayo, Tierra completos, 4 combinaciones de suelo nuevas (charco electrificado, barro, vapor, tormenta de polvo).
-- **Sellos**: scaffold completo — acción `sellos` (mantener R + 3 direccionales, inmóvil mientras dura), grupo `Sellos` en `style_data.gd`, una técnica oculta placeholder por estilo (nova/corte/curación/descarga/puño sísmico/golpe fantasma). **Sin restricción de desbloqueo todavía**: cualquiera con el estilo equipado puede usarla ya — falta el sistema de pergaminos/fichas para que sea algo que se compre, no un freebie.
-- **Casino**: los 4 juegos completos (Dados, Rueda del Clan, Cartas Selladas, Peleas del Sótano), medidor de sospecha por jugador (verde/ámbar/rojo), trampa de Viento en Dados y de Rayo en Cartas (la trampa de Sellos en Cartas sigue bloqueada, depende de pergaminos).
-- **Prólogo y elección de estilo**: pantalla previa al spawn ya existe (`scenes/ui/prologo.tscn`, `scenes/ui/seleccion_estilo.tscn`), cada jugador elige su estilo antes de entrar y el host se lo asigna en `_spawn_player()` en vez del hardcodeado anterior.
+- **Sellos y pergaminos**: scaffold de Sellos (acción R + 3 direccionales) + **Tienda de Pergaminos** en el Muelle Alto — cada técnica oculta se compra con **fichas** (tercera moneda, individual por jugador, ganada en los 4 juegos de casino) y queda gateada tras la compra (`NetworkManager.pergaminos_sellos_comprados`). Ya no es un freebie.
+- **Casino**: los 4 juegos completos (Dados, Rueda del Clan, Cartas Selladas, Peleas del Sótano), medidor de sospecha por jugador, trampa de Viento en Dados y de Rayo **y de Sellos** en Cartas (`revelar_carta_npc`, desbloqueada ahora que existen los pergaminos).
+- **Prólogo y elección de estilo**: pantalla previa al spawn (`scenes/ui/prologo.tscn`, `scenes/ui/seleccion_estilo.tscn`), cada jugador elige su estilo antes de entrar.
+- **Sistema de misión y biomas**: cambio de escena Hub↔Misión (RPC `NetworkManager.confirm_iniciar_mision`/`confirm_volver_hub`), Tablón de misiones en el Muelle, y los 5 biomas (`scenes/world/mision_*`) con 3 áreas encadenadas por `PuertaMision`, jefe de zona por bioma y `ExtraccionMision` que devuelve al Hub cargando lo que se lleve encima. **Recorte documentado**: los 5 biomas comparten layout (solo cambian color/ambientación y stats de `EnemigoSimple`); particularidades del brief (marea, niebla, oscuridad, convoyes) son producción de nivel/arte futura. Sin temporizador forzado de 12-18 min.
 
-- **Sistema de misión y biomas**: cambio de escena Hub↔Misión (instanciar/desinstanciar bajo `Misiones` en `main.tscn`, RPC `NetworkManager.confirm_iniciar_mision`/`confirm_volver_hub` igual en todos los peers), Tablón de misiones en el Muelle (F1-F5 elige bioma), y los 5 biomas (`scenes/world/mision_*`) con 3 áreas encadenadas por `PuertaMision` (se abre sola cuando el grupo de enemigos de esa área queda vacío, sin RPC propio — reutiliza que la muerte de `EnemigoSimple` ya replica igual en todos los peers), un jefe de zona por bioma (grupo `mision_jefe`) y `ExtraccionMision` (F6, bloqueada hasta matar al jefe) que devuelve al Hub cargando lo que se lleve encima. **Recorte documentado**: los 5 biomas comparten layout y disposición (solo cambian color/ambientación y las estadísticas de `EnemigoSimple` por `@export`); las particularidades del brief (marea, niebla, oscuridad, convoyes) no tienen mecánica propia todavía — es producción de nivel/arte futura, mismo criterio que ya se aplicó a Rueda del Clan/Peleas del Sótano. Sin temporizador forzado de 12-18 min (guía de contenido, no de código).
-
-**Lo que NO se ha tocado todavía de H6**: fichas (tercera moneda) y tienda de pergaminos, Falsificador y clan rival como compradores, prisioneros vivos, historia/diálogos de NPCs más allá del prólogo.
+**Lo que NO se ha tocado todavía de H6**: Falsificador y clan rival como compradores, prisioneros vivos, historia/diálogos de NPCs más allá del prólogo, desglose de contribución de la Taberna (ahora desbloqueable).
 
 **Aviso de tecla al acercarse a un punto de interacción** y varios **fixes de red/colisión** (jugador spawneaba en la esquina, dash atravesaba paredes, daño no se sincronizaba al segundo jugador, host nunca arrancaba el servidor) ya están hechos — no son tareas pendientes.
 
@@ -57,11 +56,12 @@ Hub navegable en 4 alturas (Muelle con Taberna, Calle de los Faroles con Forja/H
 **Este checklist ES el todolist de código, no una copia.** Vive en este archivo a propósito, porque es lo único que llega igual a cualquier dispositivo con un `git pull` — una herramienta tipo `TaskList` puede no existir según el entorno donde corra la sesión (no es parte del repo, no viaja con git). Si en tu sesión sí existe una herramienta de tareas, úsala como ayuda visual si quieres, pero **la fuente de verdad es marcar `[x]` aquí y hacer commit** — nunca al revés.
 
 - [ ] **Playtest de validación con gente real** de H4/H5/H6. Ninguno de los recortes de H4 (sin votación) se ha probado todavía con un grupo real jugando a la vez.
-- [ ] **Fichas y tienda de pergaminos** (H6): la tercera moneda del brief, ganada jugando en el casino, que compra técnicas ocultas de Sellos. *Desbloquea* la trampa de Sellos pendiente en Cartas Selladas. Agente: `casino-agent`.
-- [ ] **Falsificador, clan rival y prisioneros vivos** (H6) — *depende de los biomas/misión de abajo*: necesita objetivos y capturas que solo existen dentro de una misión real. Agente: `economy-agent`.
-- [x] **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — tres áreas encadenadas, jefe de zona, vuelta a extracción. Recorte documentado arriba (layout compartido, particularidades de brief pendientes de producción de nivel/arte). Agente: `narrative-agent`.
-- [ ] **Historia y diálogos de NPCs** (H6, al final) — *depende de los biomas/misión*: tabernera, viejo maestro, usurero, pescador, con una línea nueva por misión completada. Agente: `narrative-agent`.
-- [ ] **Extras de taberna**: música diegética, emotes, sillas, pizarra de deudas y récords. Sin asignar todavía, prioridad baja — es la capa acogedora, no bloquea nada del bucle jugable. Agente: `hub-agent`.
+- [x] **Fichas y tienda de pergaminos** (H6). Desbloqueó la trampa de Sellos en Cartas Selladas. Agente: `casino-agent`.
+- [ ] **Falsificador, clan rival y prisioneros vivos** (H6): necesita objetivos y capturas dentro de una misión real — ya no depende de nada, el sistema de misión existe. Agente: `economy-agent`.
+- [x] **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — tres áreas encadenadas, jefe de zona, vuelta a extracción. Agente: `narrative-agent`.
+- [ ] **Historia y diálogos de NPCs** (H6, al final): tabernera, viejo maestro, usurero, pescador, con una línea nueva por misión completada — ya no depende de nada, el sistema de misión existe. Agente: `narrative-agent`.
+- [x] **Extras de taberna**: música diegética, emotes, sillas, pizarra de deudas y récords. Agente: `hub-agent`.
+- [ ] **Desglose de contribución de la Taberna**: quedó bloqueado en H5 por falta del concepto de misión — ya existe, se puede reenganchar. Baja prioridad. Agente: `hub-agent`.
 
 No se retoma la votación de bóveda ni el Modo Mesa Alta salvo que el usuario lo pida explícitamente — esa sí es una decisión de diseño confirmada, no scope pendiente.
 
@@ -85,14 +85,17 @@ res://
     world/
       test_room/             # sala de combate + casino
       hub/                    # Puerto Bajo (4 alturas)
+      mision_costa/, mision_bambu/, mision_peaje/, mision_cantera/, mision_ruinas/  # los 5 biomas
+      tablon_misiones.tscn, puerta_mision.tscn, extraccion_mision.tscn
     ui/                       # prologo.tscn, seleccion_estilo.tscn
   scripts/
     player/
     styles/                   # style_data.gd
     combat/                   # ground_zone, projectile, status_tag, zone_preview
-    economy/
+    economy/                  # incluye tienda_pergaminos.gd, silla_taberna.gd
     network/                  # network_manager.gd (host-autoritativo)
     ui/                       # prologo.gd, seleccion_estilo.gd
+    world/                    # tablon_misiones.gd, puerta_mision.gd, extraccion_mision.gd
   resources/
     styles/                    # .tres por estilo: fuego, viento, fisico(Taijutsu), agua, rayo, tierra
   assets/
@@ -125,9 +128,9 @@ Los mismos 7 agentes de `.claude/agents/` siguen aplicando, con el dominio actua
 |---|---|---|
 | `pilar-agent` | Director de proyecto (código) | Siempre el primero — leer este documento actualizado antes de asignar nada, comparar contra `git log` porque puede haber avanzado más de una sesión en paralelo |
 | `arte-pilar-agent` | Director de la parte visual | Coordina con `plan-assets.md`/`assets-progreso.md` — gran parte de H1-H6 ya puede pasar a arte final |
-| `combat-agent` | Combate y estilos | Nada pendiente de combate puro por ahora — el siguiente enganche de Sellos (integrar con pergaminos) es tarea de `casino-agent` |
+| `combat-agent` | Combate y estilos | Nada pendiente |
 | `netcode-agent` | Red host-autoritativa | Mantenimiento y lo que necesiten las piezas nuevas |
-| `economy-agent` | Cadáveres, compradores, tiendas de grupo | Falsificador, clan rival, prisioneros vivos (depende de biomas/misión) |
-| `casino-agent` | Casino, bóveda | Fichas y tienda de pergaminos — es lo único que le queda. **La votación de bóveda y el Modo Mesa Alta están descartados, no los reintroduzcas sin que el usuario lo pida.** |
-| `hub-agent` | Hub, tiendas, taberna | El hub mecánico y las 4 tiendas ya están completas. Le queda la capa acogedora de la Taberna: música, emotes, sillas, pizarra |
-| `narrative-agent` | Historia, misiones, biomas | Prólogo y elección de estilo ya hechos. Le queda todo el sistema de misión + los 5 biomas + historia/diálogos de NPCs |
+| `economy-agent` | Cadáveres, compradores, tiendas de grupo | Falsificador, clan rival, prisioneros vivos — el sistema de misión ya existe, no hay nada bloqueando esto |
+| `casino-agent` | Casino, bóveda | Nada pendiente. **La votación de bóveda y el Modo Mesa Alta están descartados, no los reintroduzcas sin que el usuario lo pida.** |
+| `hub-agent` | Hub, tiendas, taberna | Hub, 4 tiendas y capa acogedora de Taberna completos. Le queda el desglose de contribución de la Taberna (baja prioridad) |
+| `narrative-agent` | Historia, misiones, biomas | Sistema de misión, 5 biomas, prólogo y elección de estilo hechos. Le queda historia/diálogos de NPCs |
