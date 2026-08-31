@@ -64,7 +64,7 @@ res://
   resources/
     styles/          # datos de cada estilo como Resource (.tres)
   assets/
-    sprites/
+    sprites/          # pixel art, 32x32 px por sprite
       legs/
       torso/
       fx/
