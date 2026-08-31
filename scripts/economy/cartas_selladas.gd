@@ -12,26 +12,29 @@ extends Node2D
 ##
 ## Dos trampas posibles segun el brief:
 ##
-## - Con RAYO (implementada aqui, ver jugar_mano(con_rayo) mas abajo y
-##   player.gd submit_jugar_cartas): "acelerar tu turno y decidir con mas
-##   tiempo" se adapta, al no haber timer de decision real en este vertical
-##   slice, a "reparte dos cartas y quedate con la mejor" -- mecanicamente
-##   es lo mismo que pide el brief (una ventaja de informacion/eleccion),
-##   solo que sin necesitar una UI de cuenta atras que hoy no existe. Sube
-##   sospecha igual que la trampa de Viento en la Mesa de Dados.
+## - Con RAYO (jugar_mano(con_rayo), ver player.gd submit_jugar_cartas):
+##   "acelerar tu turno y decidir con mas tiempo" se adapta, al no haber
+##   timer de decision real en este vertical slice, a "reparte dos cartas y
+##   quedate con la mejor" -- mecanicamente es lo mismo que pide el brief
+##   (una ventaja de informacion/eleccion), solo que sin necesitar una UI de
+##   cuenta atras que hoy no existe. Sube sospecha igual que la trampa de
+##   Viento en la Mesa de Dados.
 ##
-## - Con SELLOS: BLOQUEADA. El sistema de Sellos/pergaminos (tecla R,
-##   secuencia de 3 direccionales mientras se mantiene R, tecnicas ocultas
-##   del casino -- ver diseno-juego-ninja.md linea 31 y
-##   brief-traspaso-claude-code.md 2.3) no existe todavia en el repo
-##   (confirmado: ningun archivo lo menciona). Implementarlo es tarea propia
-##   de H6 fuera del alcance de esta tanda, asi que no se toca aqui. Para
-##   desbloquear esta trampa concreta hace falta 1) el propio sistema de
-##   Sellos/pergaminos, y 2) una forma de "ver la carta" de un NPC concreto
-##   0.5s -- p.ej. un futuro campo de estado por NPC o un metodo
-##   revelar_carta_npc(indice) que player.gd pudiera llamar antes de
-##   resolver jugar_mano(). No se anade ese gancho aqui para no
-##   precomprometer el diseno de un sistema que todavia no existe.
+## - Con SELLOS (jugar_mano(con_sellos), H6 casino-agent): brief
+##   diseno-juego-ninja.md linea 179, "con Sellos puedes ver una carta rival
+##   durante medio segundo". Misma adaptacion de "informacion sin timer de
+##   decision real" que Rayo de arriba: en vez de solo mostrar la carta sin
+##   poder actuar sobre ella (lo que seria una trampa sin ningun efecto de
+##   juego, y por tanto sin motivo para arriesgarse a subir sospecha por
+##   ella), "conocer" la carta de un NPC concreto se traduce en
+##   revelar_carta_npc(indice) tirando esa carta DOS veces y quedandose con
+##   la MAS BAJA de las dos -- lo opuesto de con_rayo (que se queda con la
+##   MEJOR de dos tiradas propias): aqui "sabes lo que va a salir" se
+##   convierte en que esa carta concreta nunca puede ser la version mas alta
+##   posible de si misma. Requiere tener el pergamino de Sellos comprado
+##   para el estilo equipado (ver NetworkManager.pergaminos_sellos_comprados,
+##   player.gd submit_jugar_cartas) -- la trampa usa la MISMA tecnica de
+##   Sellos que el combate, ahora ya no gratis, ver H6 casino-agent.
 
 const GRUPO_CARTAS_SELLADAS := "cartas_selladas"
 const NUM_NPC := 3
@@ -58,12 +61,22 @@ func _ready() -> void:
 ## comentario de cabecera. Un empate entre el jugador y el mejor NPC se
 ## resuelve a favor de la casa (gano = false) para no complicar el reparto
 ## con un "push" que devuelva la apuesta.
-func jugar_mano(con_rayo: bool) -> Dictionary:
+func jugar_mano(con_rayo: bool, con_sellos: bool = false) -> Dictionary:
 	var carta_jugador := randi_range(CARTA_MIN, CARTA_MAX)
 	if con_rayo:
 		carta_jugador = max(carta_jugador, randi_range(CARTA_MIN, CARTA_MAX))
 	var mejor_npc := 0
 	for i in range(NUM_NPC):
-		mejor_npc = max(mejor_npc, randi_range(CARTA_MIN, CARTA_MAX))
+		var carta_npc: int = revelar_carta_npc(i) if (con_sellos and i == 0) else randi_range(CARTA_MIN, CARTA_MAX)
+		mejor_npc = max(mejor_npc, carta_npc)
 	var gano: bool = carta_jugador > mejor_npc
 	return {"carta_jugador": carta_jugador, "mejor_npc": mejor_npc, "gano": gano, "pago": pago_ganador if gano else 0.0}
+
+## Trampa de Sellos (ver comentario de cabecera): "conoce" -- y por tanto
+## rebaja -- la carta de un NPC concreto tirandola DOS veces y quedandose
+## con la mas baja, en vez de una tirada normal. Publico porque
+## representa el gancho que la cabecera de este archivo pedia para
+## desbloquear la trampa; jugar_mano() lo llama internamente para el NPC 0
+## cuando con_sellos es true.
+func revelar_carta_npc(indice: int) -> int:
+	return min(randi_range(CARTA_MIN, CARTA_MAX), randi_range(CARTA_MIN, CARTA_MAX))
