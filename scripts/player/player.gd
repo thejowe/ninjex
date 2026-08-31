@@ -531,6 +531,8 @@ func _physics_process(delta: float) -> void:
 			_request_usar_consumible()
 		if Input.is_action_just_pressed("brindis_taberna"):
 			_request_brindis()
+		if Input.is_action_just_pressed("taberna_ver_records"):
+			_request_taberna_ver_records()
 		if Input.is_action_just_pressed("sastreria_siguiente_tinte"):
 			_request_sastreria_tinte()
 		if Input.is_action_just_pressed("casa_comprar_cocina"):
@@ -659,7 +661,7 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_herboristeria_in_range(HUB_RANGE) != null:
 		texto = "P pildora, H unguento, J bomba de humo, L sales -- I para usar"
 	elif _find_nearest_taberna_in_range(HUB_RANGE) != null:
-		texto = "Pulsa X para el brindis"
+		texto = "Pulsa X para el brindis, \\ para leer la pizarra de records"
 	elif _find_nearest_sastreria_in_range(HUB_RANGE) != null:
 		texto = "Pulsa R para cambiar tu tinte"
 	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
@@ -2033,7 +2035,12 @@ func submit_vender() -> void:
 		total_precio -= recorte_usurero
 		nueva_deuda -= recorte_usurero
 	var nuevo_total: float = NetworkManager.dinero_manchado + total_precio
-	confirm_vender.rpc(vendidos, nuevo_total, total_precio, recorte_usurero, nueva_deuda)
+	# Pizarra de records de la Taberna (H6 extra, ver NetworkManager.
+	# record_cuerpos_destrozados y su comentario de cabecera para la
+	# definicion elegida de "destrozado"): venderle al Carnicero cuenta,
+	# sea cual sea el estado_conservacion de cada cadaver.
+	var es_carnicero: bool = comprador.tipo == Comprador.Tipo.CARNICERO
+	confirm_vender.rpc(vendidos, nuevo_total, total_precio, recorte_usurero, nueva_deuda, es_carnicero)
 
 ## Aplica la venta igual en todos los peers: borra los cadaveres vendidos,
 ## los quita de la lista de carga y actualiza el pool compartido de dinero
@@ -2042,7 +2049,7 @@ func submit_vender() -> void:
 ## falta un RPC aparte solo para el dinero). Tambien aplica la deuda del
 ## Usurero ya decidida por el host en submit_vender().
 @rpc("any_peer", "call_local", "reliable")
-func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, nueva_deuda: float) -> void:
+func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, nueva_deuda: float, es_carnicero: bool) -> void:
 	for path in vendidos:
 		carried_cadaver_paths.erase(path)
 		var cad := get_node_or_null(path) as Cadaver
@@ -2050,6 +2057,9 @@ func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado
 			cad.queue_free()
 	NetworkManager.dinero_manchado = nuevo_total
 	NetworkManager.usurero_deuda_pendiente = nueva_deuda
+	if es_carnicero:
+		var peer_id_vendedor := get_multiplayer_authority()
+		NetworkManager.record_cuerpos_destrozados[peer_id_vendedor] = NetworkManager.record_cuerpos_destrozados.get(peer_id_vendedor, 0) + vendidos.size()
 	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])
 	_status_label.modulate = Color(1, 1, 1)
 	if recorte_usurero > 0.0:
@@ -2216,6 +2226,9 @@ func confirm_apostar_dados(nuevo_limpio: float, nuevo_manchado: float, moneda: S
 			resultado_texto += " (recorte Usurero -%.1f, deuda restante: -%.0f)" % [recorte_usurero, nueva_deuda]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
+		# Pizarra de records de la Taberna (H6 extra, ver NetworkManager.
+		# record_casino_perdidas): cuenta cada vez que gano == false.
+		NetworkManager.record_casino_perdidas[peer_id] = NetworkManager.record_casino_perdidas.get(peer_id, 0) + 1
 	var texto := "Dados %s (%s, cara %d): %s (+%.0f fichas)" % [moneda, eleccion, cara, resultado_texto, fichas_ganadas]
 	if hizo_trampa:
 		texto += " [Viento: dado forzado]"
@@ -2292,6 +2305,7 @@ func confirm_girar_ruleta(nuevo_limpio: float, nuevo_manchado: float, moneda: St
 		resultado_texto = "GANASTE +%.1f (x%.1f)" % [(apuesta * pago) - apuesta, pago]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
+		NetworkManager.record_casino_perdidas[peer_id] = NetworkManager.record_casino_perdidas.get(peer_id, 0) + 1
 	_status_label.text = "Ruleta %s (elegiste %s, salio %s): %s (+%.0f fichas)" % [moneda, categoria, sector, resultado_texto, fichas_ganadas]
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
@@ -2407,6 +2421,7 @@ func confirm_jugar_cartas(nuevo_limpio: float, nuevo_manchado: float, moneda: St
 		resultado_texto = "GANASTE +%.1f" % [(apuesta * pago) - apuesta]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
+		NetworkManager.record_casino_perdidas[peer_id] = NetworkManager.record_casino_perdidas.get(peer_id, 0) + 1
 	var texto := "Cartas %s (tu %d vs mejor NPC %d): %s (+%.0f fichas)" % [moneda, carta_jugador, mejor_npc, resultado_texto, fichas_ganadas]
 	if hizo_trampa:
 		texto += " [trampa]"
@@ -2471,6 +2486,7 @@ func confirm_apostar_pelea(nuevo_limpio: float, nuevo_manchado: float, moneda: S
 		resultado_texto = "GANASTE +%.1f" % [(apuesta * pago) - apuesta]
 	else:
 		resultado_texto = "perdiste -%.1f" % apuesta
+		NetworkManager.record_casino_perdidas[peer_id] = NetworkManager.record_casino_perdidas.get(peer_id, 0) + 1
 	_status_label.text = "Pelea %s (apostaste %s, gano %s): %s (+%.0f fichas)" % [moneda, eleccion, nombre_ganador, resultado_texto, fichas_ganadas]
 	_status_label.modulate = Color(0.4, 1, 0.4) if gano else Color(1, 0.4, 0.4)
 
@@ -2689,6 +2705,46 @@ func submit_brindis() -> void:
 	var nuevo_limpio: float = NetworkManager.dinero_limpio - taberna.costo_brindis
 	NetworkManager.confirm_brindis.rpc(nuevo_limpio, taberna.brindis_duracion, multiplicador)
 	confirm_casino_mensaje.rpc("Brindis en El Ancla Rota: +%.0f%% de daño para todo el grupo durante %.0f s" % [taberna.brindis_bonus_daño * 100.0, taberna.brindis_duracion])
+
+func _request_taberna_ver_records() -> void:
+	submit_taberna_ver_records.rpc_id(1)
+
+## Lee la pizarra de records de la Taberna (H6 extra): solo texto, no muta
+## ningun estado -- reutiliza confirm_casino_mensaje en vez de un confirm_
+## propio (mismo criterio que el resto de mensajes informativos del casino).
+## Calcula "quien va primero" en cada categoria sobre NetworkManager.
+## record_casino_perdidas/record_cuerpos_destrozados (ver su comentario de
+## cabecera para las definiciones elegidas y el hueco bloqueado de caidas).
+@rpc("any_peer", "call_local", "reliable")
+func submit_taberna_ver_records() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var taberna := _find_nearest_taberna_in_range(HUB_RANGE)
+	if taberna == null:
+		confirm_casino_mensaje.rpc("No hay ninguna taberna cerca")
+		return
+	var texto := "Pizarra de la Taberna -- "
+	texto += "Mas perdidas en el casino: %s  |  " % _texto_lider_record(NetworkManager.record_casino_perdidas)
+	texto += "Mas cuerpos destrozados: %s  |  " % _texto_lider_record(NetworkManager.record_cuerpos_destrozados)
+	texto += "Mas caidas: (sin sistema de muerte/respawn todavia)"
+	confirm_casino_mensaje.rpc(texto)
+
+## Formatea "jugador <peer_id> (<n>)" para quien tenga el contador mas alto
+## de un Dictionary peer_id -> int de la pizarra de records. "sin datos" si
+## esta vacio (nadie ha hecho nada que cuente todavia).
+func _texto_lider_record(record: Dictionary) -> String:
+	if record.is_empty():
+		return "sin datos"
+	var lider_id: int = -1
+	var lider_valor: int = -1
+	for peer_id in record.keys():
+		var valor: int = record[peer_id]
+		if valor > lider_valor:
+			lider_valor = valor
+			lider_id = peer_id
+	return "jugador %d (%d)" % [lider_id, lider_valor]
 
 # =========================================================================
 # Sastreria (H5 cierre, Calle de los Faroles) -- tecla R. Cosmetico puro, sin

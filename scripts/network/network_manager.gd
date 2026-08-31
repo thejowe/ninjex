@@ -223,6 +223,32 @@ var brindis_damage_multiplier: float = 1.0
 ## player.gd submit_brindis), mismo patron que usurero_deuda_pendiente.
 var taberna_deuda_pendiente: float = 0.0
 
+## Pizarra de records de la Taberna (H6 extra) -- POR JUGADOR, mismo patron
+## Dictionary peer_id -> int que forja_nivel/sastreria_tinte_indice. Sin
+## entrada == 0. Solo los mutan los confirm_* que ya existian para cada
+## juego (ver player.gd confirm_apostar_dados/confirm_girar_ruleta/
+## confirm_jugar_cartas/confirm_apostar_pelea cuando gano == false); esta
+## pizarra no añade ningun submit_/confirm_ propio para incrementarse, solo
+## lee/engancha en los que ya estan.
+##
+## "Quien ha caido mas veces" (brief H5 taberna, pizarra de records) queda
+## BLOQUEADO igual que otros huecos ya documentados (ver Palomar/Sellos-en-
+## Cartas): no existe sistema de muerte/respawn de jugador todavia (ver
+## comentario de cabecera de player.gd sobre vida_actual, "no incluye muerte
+## ni respawn de jugador"). No hay contador para esto.
+var record_casino_perdidas: Dictionary = {}
+
+## "Quien ha destrozado mas cuerpos" (pizarra de records). Definicion
+## elegida para esta tarea (el brief deja el criterio abierto): un cadaver
+## vendido al Carnicero (ver comprador.gd Tipo.CARNICERO) cuenta como
+## "destrozado" -- el Carnicero es el "suelo garantizado" que paga precio
+## fijo IGNORANDO el tipo de daño con el que murio el enemigo (a diferencia
+## del Boticario, que paga mas por cuerpos frescos/cortante-veneno), asi que
+## venderle ahi es tratar el cuerpo sin ningun cuidado por como quedo. Mismo
+## patron Dictionary peer_id -> int que record_casino_perdidas de arriba.
+## Solo lo muta player.gd confirm_vender.
+var record_cuerpos_destrozados: Dictionary = {}
+
 ## Cocina de la Casa del equipo (H5 cierre, Terrazas): mismo patron que
 ## brindis_time_remaining/brindis_damage_multiplier de arriba -- buff de
 ## GRUPO temporal, activo para TODOS los jugadores conectados, decae
