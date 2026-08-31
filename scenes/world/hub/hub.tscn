@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" path="res://scenes/economy/taberna.tscn" id="3_taberna"]
 [ext_resource type="PackedScene" path="res://scenes/economy/sastreria.tscn" id="4_sastreria"]
 [ext_resource type="PackedScene" path="res://scenes/economy/casa_equipo.tscn" id="5_casa_equipo"]
+[ext_resource type="PackedScene" path="res://scenes/world/tablon_misiones.tscn" id="6_tablon_misiones"]
 
 [sub_resource type="RectangleShape2D" id="Shape_wall_h_1024"]
 size = Vector2(1024, 32)
@@ -160,6 +161,17 @@ color = Color(0.3, 0.28, 0.35, 1)
 
 [node name="TabernaAnclaRota" parent="Muelle" instance=ExtResource("3_taberna")]
 position = Vector2(2250, 600)
+
+[node name="TablonMisiones" parent="Muelle" instance=ExtResource("6_tablon_misiones")]
+position = Vector2(1700, 300)
+
+[node name="PlayerSpawns" type="Node2D" parent="Muelle"]
+
+[node name="PlayerSpawn1" type="Marker2D" parent="Muelle/PlayerSpawns"]
+position = Vector2(1900, 700)
+
+[node name="PlayerSpawn2" type="Marker2D" parent="Muelle/PlayerSpawns"]
+position = Vector2(2024, 700)
 
 [node name="Escalera1" type="Node2D" parent="."]
 

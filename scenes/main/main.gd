@@ -20,6 +20,11 @@ func _ready() -> void:
 	NetworkManager.effects_root = $Effects
 	NetworkManager.cadavers_root = $Cadavers
 	NetworkManager.spawn_points.assign($TestRoom/PlayerSpawns.get_children())
+	# H6: contenedor de la escena de mision activa (ver
+	# NetworkManager.confirm_iniciar_mision/confirm_volver_hub) y spawn_points
+	# del Hub para poder volver a ellos tras la primera mision.
+	NetworkManager.mission_root = $Misiones
+	NetworkManager.hub_spawn_points.assign($Hub/Muelle/PlayerSpawns.get_children())
 	_run_intro_flow()
 
 func _run_intro_flow() -> void:

@@ -143,6 +143,11 @@ const CASINO_RANGE := 80.0
 ## deteccion por distancia simple, solo con otro nombre para dejar claro que
 ## es la tanda del Hub y no la del casino.
 const HUB_RANGE := 80.0
+## Grupo compartido por TODAS las escenas de mision (H6) para marcar al jefe
+## de zona -- ver mision_*.tscn. Central aqui (no en NetworkManager) porque
+## solo lo consulta la comprobacion de extraccion de _update_interaction_hint
+## y submit_volver_hub, ambas en este fichero.
+const GRUPO_JEFE_MISION := "mision_jefe"
 ## Con que moneda se apuesta en la mesa de dados ahora mismo: "limpio" o
 ## "manchado". El brief define la manchada como "solo cambiable en el
 ## casino" (2.3), pero el usuario quiere ademas la via tematica de blanquear
@@ -536,6 +541,18 @@ func _physics_process(delta: float) -> void:
 			_request_comprar_jardin()
 		if Input.is_action_just_pressed("comprar_pergamino"):
 			_request_comprar_pergamino()
+		if Input.is_action_just_pressed("elegir_mision_costa"):
+			_request_elegir_mision("costa")
+		if Input.is_action_just_pressed("elegir_mision_bambu"):
+			_request_elegir_mision("bambu")
+		if Input.is_action_just_pressed("elegir_mision_peaje"):
+			_request_elegir_mision("peaje")
+		if Input.is_action_just_pressed("elegir_mision_cantera"):
+			_request_elegir_mision("cantera")
+		if Input.is_action_just_pressed("elegir_mision_ruinas"):
+			_request_elegir_mision("ruinas")
+		if Input.is_action_just_pressed("volver_hub"):
+			_request_volver_hub()
 	move_and_slide()
 
 ## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
@@ -645,6 +662,13 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE) != null:
 		var tienda_hint := _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE)
 		texto = "Pulsa 0 para comprar el pergamino de %s (%.0f fichas)" % [style_data.style_name, tienda_hint.precio_pergamino]
+	elif _find_nearest_tablon_in_range(HUB_RANGE) != null:
+		texto = "Tablon de misiones -- F1 Costa, F2 Bambu, F3 Peaje, F4 Cantera, F5 Ruinas"
+	elif _find_nearest_extraccion_in_range(HUB_RANGE) != null:
+		if get_tree().get_nodes_in_group(GRUPO_JEFE_MISION).is_empty():
+			texto = "Pulsa F6 para volver a la Aldea con el botin"
+		else:
+			texto = "Aun queda el jefe de la zona -- no puedes extraer todavia"
 	_interaction_label.text = texto
 
 func _handle_combo_timer(delta: float) -> void:
@@ -1068,6 +1092,34 @@ func _find_nearest_tienda_pergaminos_in_range(range_max: float) -> TiendaPergami
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = t
+	return nearest
+
+## Tablon de misiones mas cercano dentro de range_max (H6). Misma proximidad
+## simple que las funciones de arriba.
+func _find_nearest_tablon_in_range(range_max: float) -> TablonMisiones:
+	var nearest: TablonMisiones = null
+	var best_dist: float = INF
+	for t in get_tree().get_nodes_in_group(TablonMisiones.GRUPO_TABLONES):
+		if not (t is TablonMisiones):
+			continue
+		var dist: float = global_position.distance_to(t.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = t
+	return nearest
+
+## Punto de extraccion mas cercano dentro de range_max (H6). Misma proximidad
+## simple que las funciones de arriba.
+func _find_nearest_extraccion_in_range(range_max: float) -> ExtraccionMision:
+	var nearest: ExtraccionMision = null
+	var best_dist: float = INF
+	for e in get_tree().get_nodes_in_group(ExtraccionMision.GRUPO_EXTRACCIONES):
+		if not (e is ExtraccionMision):
+			continue
+		var dist: float = global_position.distance_to(e.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = e
 	return nearest
 
 func _validate_sender() -> bool:
@@ -2715,6 +2767,47 @@ func confirm_comprar_pergamino(estilo_key: String, nuevas_fichas: float) -> void
 	NetworkManager.fichas[peer_id] = nuevas_fichas
 	_status_label.modulate = Color(1, 1, 1)
 	_status_label.text = "Pergamino comprado: %s (%s)" % [style_data.style_name, style_data.sellos_technique_name]
+
+# =========================================================================
+# Misiones (H6) -- Tablon del Muelle (F1-F5 elige bioma) y extraccion al
+# final de la mision (F6 vuelve al Hub). Mismo patron submit_/confirm_ que
+# el resto del kit: el cliente pide, el host valida rango y estado, y la
+# aplicacion real (instanciar/liberar la escena de mision) vive en
+# NetworkManager porque afecta a TODOS los peers a la vez, no a un unico
+# personaje -- mismo criterio que confirm_brindis/confirm_cocina de arriba.
+# =========================================================================
+
+func _request_elegir_mision(bioma_id: String) -> void:
+	submit_elegir_mision.rpc_id(1, bioma_id)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_elegir_mision(bioma_id: String) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if NetworkManager.mision_actual != "":
+		return # ya hay una mision en marcha, ignorar
+	if _find_nearest_tablon_in_range(HUB_RANGE) == null:
+		return
+	NetworkManager.confirm_iniciar_mision.rpc(bioma_id)
+
+func _request_volver_hub() -> void:
+	submit_volver_hub.rpc_id(1)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_volver_hub() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if NetworkManager.mision_actual == "":
+		return # no hay mision activa de la que volver
+	if _find_nearest_extraccion_in_range(HUB_RANGE) == null:
+		return
+	if not get_tree().get_nodes_in_group(GRUPO_JEFE_MISION).is_empty():
+		return # el jefe de la zona sigue vivo, no se puede extraer todavia
+	NetworkManager.confirm_volver_hub.rpc()
 
 # =========================================================================
 # Casa del equipo (H5 cierre, Terrazas) -- ; Cocina, [ Almacen, ] Jardin.

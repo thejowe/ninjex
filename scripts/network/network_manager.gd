@@ -21,6 +21,38 @@ var cadavers_root: Node = null
 ## la mayor parte de la pantalla quedaba fuera de la sala (se veia vacio).
 var spawn_points: Array[Node2D] = []
 
+## H6: id del bioma activo ("costa"/"bambu"/"peaje"/"cantera"/"ruinas") o ""
+## si estamos en el Hub. Solo lo muta el host, siempre dentro de
+## confirm_iniciar_mision/confirm_volver_hub (mismo patron que el resto del
+## autoload). player.gd lo consulta para no dejar abrir dos misiones a la vez
+## ni volver al hub si no hay ninguna activa.
+var mision_actual: String = ""
+## Contenedor donde se instancia la escena de mision activa -- asignado por
+## main.gd en _ready() (nodo "Misiones", hermano de Hub/TestRoom, colocado
+## lejos en el mundo para que sus paredes nunca se solapen con las del Hub).
+var mission_root: Node = null
+## Puntos de spawn del Hub (Muelle) -- asignados por main.gd en _ready().
+## Se usan para reponer spawn_points al volver de una mision cuando no habia
+## spawn_points previos guardados (primera vez que se entra a una mision).
+var hub_spawn_points: Array[Node2D] = []
+## spawn_points de antes de entrar en la mision activa, para restaurarlos tal
+## cual al volver (evita asumir que siempre se vuelve al Hub -- si en el
+## futuro hay misiones encadenadas, esto ya lo contempla).
+var _spawn_points_previos: Array[Node2D] = []
+
+## H6: escena de cada bioma, instanciada bajo mission_root al elegir en el
+## Tablon de misiones (ver TablonMisiones / player.gd submit_elegir_mision).
+## Todas comparten estructura (3 areas + PuertaMision + ExtraccionMision),
+## solo cambian ambientacion y estadisticas de EnemigoSimple -- ver cada
+## escena para el detalle.
+const MISIONES: Dictionary = {
+	"costa": preload("res://scenes/world/mision_costa/mision_costa.tscn"),
+	"bambu": preload("res://scenes/world/mision_bambu/mision_bambu.tscn"),
+	"peaje": preload("res://scenes/world/mision_peaje/mision_peaje.tscn"),
+	"cantera": preload("res://scenes/world/mision_cantera/mision_cantera.tscn"),
+	"ruinas": preload("res://scenes/world/mision_ruinas/mision_ruinas.tscn"),
+}
+
 ## Dinero "manchado" (H2): pool compartido entre todos los jugadores desde
 ## ya -- la votacion de boveda es H4, no esta implementada, pero no pasa
 ## nada por que el pool ya sea unico ahora mismo. Solo lo muta el host,
@@ -351,3 +383,65 @@ func _spawn_position_for(id: int) -> Vector2:
 		return Vector2.ZERO
 	var index := (id - 1) % spawn_points.size()
 	return spawn_points[index].global_position
+
+# =========================================================================
+# Misiones (H6) -- cambio de escena Hub <-> bioma. Decision de arquitectura:
+# la escena de mision se instancia/desinstancia como hijo de mission_root
+# (un Node2D vacio, hermano de Hub/TestRoom en main.tscn, colocado lejos en
+# el mundo) en vez de SceneTree.change_scene_to_packed. Motivo: Hub/TestRoom
+# ya conviven siempre como hijos permanentes de Main (ver main.gd), y todo el
+# estado de red (players_root, cadavers_root, NetworkManager entero) vive en
+# ese mismo arbol -- cambiar de escena de verdad obligaria a reconectar todo
+# eso. Instanciar/desinstanciar es el equivalente minimo que ya encaja con
+# esa arquitectura. El host decide cuando se cambia (submit_elegir_mision/
+# submit_volver_hub en player.gd, filtrados por multiplayer.is_server()) y lo
+# replica a todos los peers con un RPC call_local reliable, igual que el
+# resto del autoload.
+# =========================================================================
+
+## Confirma el inicio de mision igual en todos los peers: instancia la
+## escena del bioma, reasigna spawn_points a sus marcadores y reposiciona a
+## los jugadores ya conectados. Lo llama el host desde
+## player.gd submit_elegir_mision(); nunca el cliente directamente.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_iniciar_mision(bioma_id: String) -> void:
+	if mision_actual != "":
+		return # ya hay una mision activa, ignorar peticion duplicada
+	if not MISIONES.has(bioma_id):
+		return
+	if mission_root == null:
+		push_warning("NetworkManager: mission_root no asignado, no se puede iniciar la mision")
+		return
+	_spawn_points_previos = spawn_points.duplicate()
+	var instancia: Node = MISIONES[bioma_id].instantiate()
+	mission_root.add_child(instancia)
+	var nuevos: Array[Node2D] = []
+	nuevos.assign(instancia.get_node("PlayerSpawns").get_children())
+	spawn_points = nuevos
+	mision_actual = bioma_id
+	_reposicionar_jugadores()
+
+## Confirma la vuelta al Hub igual en todos los peers: libera la escena de
+## mision activa y restaura los spawn_points de antes de entrar (los del Hub
+## la primera vez). Lo llama el host desde player.gd submit_volver_hub().
+@rpc("any_peer", "call_local", "reliable")
+func confirm_volver_hub() -> void:
+	if mision_actual == "":
+		return # no hay mision activa de la que volver
+	if mission_root != null:
+		for hijo in mission_root.get_children():
+			hijo.queue_free()
+	spawn_points = _spawn_points_previos if not _spawn_points_previos.is_empty() else hub_spawn_points.duplicate()
+	mision_actual = ""
+	_reposicionar_jugadores()
+
+## Manda a cada jugador ya conectado al spawn_point que le toca segun su
+## peer_id, mismo calculo que _spawn_position_for usa para jugadores nuevos
+## -- asi entrar/salir de una mision reposiciona a todo el grupo de golpe en
+## vez de dejarlos flotando en las coordenadas de la escena anterior.
+func _reposicionar_jugadores() -> void:
+	if players_root == null:
+		return
+	for jugador in players_root.get_children():
+		var id := int(jugador.name)
+		jugador.global_position = _spawn_position_for(id)
