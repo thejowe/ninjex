@@ -82,6 +82,38 @@ var forja_nivel: Dictionary = {}
 ## confirm_sastreria_tinte).
 var sastreria_tinte_indice: Dictionary = {}
 
+## Fichas (H6 casino, brief "Tres monedas": "solo se ganan jugando, compran
+## pergaminos") de CADA jugador -- peer_id -> cantidad. A DIFERENCIA de
+## dinero_manchado/dinero_limpio (pools COMPARTIDOS) y aunque el patron
+## Dictionary peer_id->valor es el mismo que forja_nivel/sastreria_tinte_indice
+## de arriba, las fichas son individuales POR DEFINICION DEL BRIEF: cada
+## jugador gasta las suyas propias en la Tienda de Pergaminos, no un pool de
+## grupo. Sin entrada == 0.0 (nadie empieza con fichas). Solo lo mutan los
+## confirm_* de player.gd que resuelven un juego de casino (ver
+## confirm_apostar_dados/confirm_girar_ruleta/confirm_jugar_cartas/
+## confirm_apostar_pelea) y confirm_comprar_pergamino (que las resta), mismo
+## criterio del resto de este autoload: el host calcula, el RPC call_local
+## aplica el mismo valor en todos los peers.
+##
+## Regla invariante critica (brief seccion 4): las fichas NUNCA se convierten
+## desde/hacia dinero_limpio/dinero_manchado, ni directa ni indirectamente.
+## Ningun submit_*/confirm_* debe leer fichas y escribir dinero_limpio o
+## dinero_manchado (o viceversa) en la misma operacion.
+var fichas: Dictionary = {}
+
+## Pergaminos de Sellos comprados (H6 casino) -- peer_id -> Dictionary
+## {element_name: String -> bool}. Cada estilo (StyleData.element_name:
+## "fuego"/"viento"/"agua"/"tierra"/"rayo"/"fisico") tiene su propia tecnica
+## de Sellos (ver style_data.gd grupo "Sellos") y su propio desbloqueo
+## independiente -- comprar el pergamino de Fuego no desbloquea el de Rayo.
+## Compra UNICA y PERMANENTE por jugador y por estilo (igual que
+## casa_equipo_almacen_comprado es unica y permanente para el grupo, pero
+## aqui es por peer_id, no de grupo). Sin entrada para un estilo == no
+## comprado. Solo lo muta el host, siempre desde dentro de
+## player.gd confirm_comprar_pergamino. player.gd submit_sellos_technique lo
+## consulta para decidir si la tecnica de Sellos in-combate se ejecuta o no.
+var pergaminos_sellos_comprados: Dictionary = {}
+
 ## Medidor de sospecha (H6 casino, brief 2.3 / diseno "El casino") -- POR
 ## JUGADOR, no compartido como los pools de dinero: "te vigilan a ti", no al
 ## grupo. Mismo patron que forja_nivel de arriba: Dictionary peer_id ->
