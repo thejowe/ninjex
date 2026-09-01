@@ -5,9 +5,76 @@ extends Node
 ## Esta tanda solo se hace playtest con UN peer conectado como host, pero la
 ## arquitectura ya contempla un segundo actor: cualquier peer que se conecte
 ## a este servidor se spawnea automaticamente igual que el host.
+##
+## TRANSPORTE: Steam P2P via GodotSteam GDExtension (addons/godotsteam/),
+## NO ENet/IP directa -- decision del usuario. host_game() crea un lobby de
+## Steam (Steam.createLobby) y join_game() se une a uno por su id de lobby
+## (Steam.joinLobby), no por IP. El MultiplayerPeer real es SteamMultiplayerPeer
+## (ver _on_lobby_created/_on_lobby_joined mas abajo), que Godot trata como
+## cualquier otro MultiplayerPeer -- todo el patron host-autoritativo
+## submit_/confirm_ del resto de este archivo es AJENO al transporte y no
+## cambia. App ID: 480 (Spacewar, de test de Valve) -- ver steam_appid.txt en
+## la raiz del repo; no hay App ID propio todavia, se cambiara mas adelante
+## tocando solo ese archivo, no este script.
+##
+## LIMITACION DE TESTEO: Steam P2P requiere el cliente de Steam abierto y
+## logueado en cada maquina. Probar con DOS INSTANCIAS EN EL MISMO PC bajo la
+## MISMA cuenta de Steam NO simula dos jugadores reales -- Steam identifica al
+## peer por SteamID de cuenta, asi que las dos instancias comparten identidad
+## (y ademas Steam suele bloquear el overlay/lobby en la segunda instancia).
+## Para un playtest de verdad hacen falta dos cuentas de Steam distintas (dos
+## PCs, o un familiar/Family Sharing en la misma LAN). Ver resumen final del
+## agente de red para alternativas de test recomendadas.
 
-const PORT := 7777
 const MAX_PLAYERS := 4 # tope de diseno del juego completo (2-4 jugadores)
+## App ID de Steam usado para steamInit/steam_appid.txt -- 480 es Spacewar,
+## el juego de pruebas de Valve. Intencional: no hay App ID propio todavia
+## (ver comentario de cabecera). NO se referencia desde steam_appid.txt (ese
+## archivo lo lee el propio SDK de Steam antes de que corra ningun script),
+## pero se pasa tambien aqui a steamInitEx como cinturon y tirantes: si algun
+## dia steam_appid.txt se borra sin querer (Valve recomienda no incluirlo en
+## el build final), la inicializacion sigue funcionando igual.
+const STEAM_APP_ID := 480
+
+## True si Steam.steamInitEx() se completo con exito en _ready(). host_game/
+## join_game comprueban esto antes de tocar la API de Steam -- sin esto,
+## Steam.createLobby()/joinLobby() explotarian o se quedarian colgados sin
+## dar ningun callback si el cliente de Steam no esta corriendo. Tambien deja
+## que la verificacion headless del proyecto (sin cliente de Steam abierto)
+## cargue el autoload sin crashear.
+var steam_initialized: bool = false
+
+## Id del lobby de Steam activo, 0 si no hay ninguno. Puesto por
+## _on_lobby_created (host) o _on_lobby_joined (cliente); usado por
+## invite_friends() (overlay de invitacion) y disconnect_game() (para salir
+## del lobby de Steam, no solo cerrar el MultiplayerPeer).
+var steam_lobby_id: int = 0
+
+## Emitida cuando el MultiplayerPeer de Steam ya esta activo y listo (host tras
+## _on_lobby_created, cliente tras _on_lobby_joined) -- lobby.gd espera esta
+## señal en vez de asumir que host_game()/join_game() conectan de forma
+## sincrona como hacia ENet: crear/unirse a un lobby de Steam es asincrono
+## (round-trip contra los servidores de Steam), a diferencia de
+## ENetMultiplayerPeer.create_server()/create_client(), que devolvian el
+## resultado al instante.
+signal lobby_ready(is_host: bool)
+
+## Emitida si Steam.createLobby()/joinLobby() fallan (red, lobby llena,
+## lobby ya no existe, etc.) -- lobby.gd la escucha para mostrar el motivo y
+## dejar reintentar en vez de quedarse colgado en "Conectando...".
+signal lobby_join_failed(reason: String)
+
+## Id de lobby recibido via Steam.join_requested (el jugador acepta una
+## invitacion de Steam, o pulsa "Unirse a la partida" en la lista de amigos,
+## MIENTRAS el juego ya esta corriendo) -- solo se guarda si todavia no
+## estamos conectados a nada (ver _on_join_requested). lobby.gd lo consulta
+## al entrar en PanelModo para auto-unirse sin que el jugador tenga que picar
+## el id de lobby a mano.
+var pending_invite_lobby_id: int = 0
+## Emitida junto con pending_invite_lobby_id de arriba, para que lobby.gd
+## reaccione al momento si ya esta en pantalla (en vez de solo consultar el
+## valor en su _ready()).
+signal invite_received(lobby_id: int)
 
 ## Asignados por main.gd en _ready() antes de llamar a host_game().
 var players_root: Node = null
@@ -335,7 +402,34 @@ var cocina_damage_reduction_multiplier: float = 1.0
 var casa_equipo_almacen_comprado: bool = false
 var casa_equipo_jardin_comprado: bool = false
 
+## Inicializa Steam en cuanto arranca el autoload (antes de que main.gd llegue
+## a la pantalla de titulo/lobby, ver comentario de cabecera de main.gd) --
+## host_game()/join_game() dependen de steam_initialized para saber si pueden
+## usar la API de Steam. No usa Project Settings > Steam > Initialization
+## (metodo 1 de la doc de GodotSteam) a proposito: mantener la inicializacion
+## explicita en codigo hace mas facil de encontrar/tocar este punto para
+## cualquier agente que trabaje despues en la capa de red.
+func _ready() -> void:
+	var init_result: Dictionary = Steam.steamInitEx(STEAM_APP_ID, false)
+	# steamInitEx (a diferencia de steamInit) devuelve un Dictionary con
+	# "status"/"verbal" en vez de un simple bool -- lo usamos solo para el
+	# push_warning de abajo, mas facil de diagnosticar que un fallo mudo.
+	steam_initialized = init_result.get("status", -1) == Steam.STEAM_API_INIT_RESULT_OK
+	if not steam_initialized:
+		push_warning("NetworkManager: Steam no se pudo inicializar (%s) -- hace falta el cliente de Steam abierto y logueado para jugar en red. host_game()/join_game() no haran nada hasta entonces." % init_result)
+		return
+	Steam.lobby_created.connect(_on_lobby_created)
+	Steam.lobby_joined.connect(_on_lobby_joined)
+	Steam.join_requested.connect(_on_join_requested)
+
 func _process(delta: float) -> void:
+	# Imprescindible para que lleguen los callbacks de Steam (lobby_created,
+	# lobby_joined, join_requested, etc.) -- sin esto, Steam.createLobby() y
+	# companyia se quedan colgados para siempre. Vive en el _process() del
+	# autoload (siempre activo, nunca pausado) en vez de en un nodo que podria
+	# pausarse -- mismo criterio que recomienda la doc oficial de GodotSteam.
+	if steam_initialized:
+		Steam.run_callbacks()
 	if brindis_time_remaining > 0.0:
 		brindis_time_remaining -= delta
 		if brindis_time_remaining <= 0.0:
@@ -427,37 +521,152 @@ func confirm_comprar_jardin(nuevo_limpio: float) -> void:
 ## spawnea (ver submit_style_choice). Solo lo muta el host.
 var style_choice: Dictionary = {}
 
+## Crea un lobby de Steam (asincrono, ver _on_lobby_created mas abajo para la
+## parte que de verdad monta el MultiplayerPeer). LOBBY_TYPE_FRIENDS_ONLY:
+## visible para amigos del host (para "Invitar amigos", ver invite_friends())
+## sin quedar listado publicamente entre el mar de lobbies de Spacewar (app id
+## 480 compartido por todo el mundo que usa GodotSteam sin App ID propio, ver
+## comentario de cabecera).
 func host_game() -> void:
 	# multiplayer.multiplayer_peer NUNCA es null por defecto: Godot le pone un
 	# OfflineMultiplayerPeer de por si. Comprobar "!= null" no detecta ese caso
 	# y por tanto nunca deja pasar la primera llamada real.
 	if not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
 		return
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(PORT, MAX_PLAYERS)
-	if err != OK:
-		push_error("NetworkManager: no se pudo crear el servidor (error %s)" % err)
+	if not steam_initialized:
+		push_error("NetworkManager: Steam no esta inicializado, no se puede crear una sala.")
+		lobby_join_failed.emit("Steam no esta disponible. Abre el cliente de Steam e inicia sesion.")
 		return
+	Steam.createLobby(Steam.LOBBY_TYPE_FRIENDS_ONLY, MAX_PLAYERS)
+	# El resto (montar el SteamMultiplayerPeer, emitir lobby_ready) ocurre en
+	# _on_lobby_created cuando Steam confirma la creacion -- createLobby() es
+	# async, a diferencia de ENetMultiplayerPeer.create_server() de antes, que
+	# devolvia el resultado al instante.
+
+## Se une a un lobby de Steam por su id (asincrono, ver _on_lobby_joined mas
+## abajo). A diferencia del join_game(ip: String) de antes (ENet), el "sitio"
+## al que te unes ahora es un lobby_id de Steam (entero de 64 bits), no una
+## direccion IP -- lo normal es llegar aqui via el overlay de invitacion
+## (ver invite_friends()/_on_join_requested), pero tambien se acepta pegado a
+## mano como atajo de test (ver PanelUnirse en lobby.gd/lobby.tscn).
+func join_game(lobby_id: int) -> void:
+	if not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
+		return
+	if not steam_initialized:
+		push_error("NetworkManager: Steam no esta inicializado, no se puede unir a una sala.")
+		lobby_join_failed.emit("Steam no esta disponible. Abre el cliente de Steam e inicia sesion.")
+		return
+	if lobby_id <= 0:
+		lobby_join_failed.emit("Id de sala invalido.")
+		return
+	Steam.joinLobby(lobby_id)
+	# No se spawnea aqui: el spawn real lo dispara submit_style_choice en
+	# cuanto este cliente elige estilo y confirma la conexion (ver main.gd),
+	# despues de que _on_lobby_joined monte el MultiplayerPeer.
+
+## Callback de Steam.createLobby() (ver host_game() de arriba). Aqui es donde
+## de verdad se monta el transporte: SteamMultiplayerPeer.create_host() en vez
+## de ENetMultiplayerPeer.create_server(). server_relay = true (recomendado
+## por la doc de GodotSteam): los clientes no hablan directamente entre ellos,
+## todo pasa por el host -- coincide con el modelo host-autoritativo que ya
+## usa el resto de este autoload y simplifica la topologia de red a "todos
+## contra el host", igual que tenia ENet.
+func _on_lobby_created(connect_status: int, lobby_id: int) -> void:
+	if connect_status != Steam.RESULT_OK:
+		push_error("NetworkManager: fallo al crear la sala de Steam (codigo %s)" % connect_status)
+		lobby_join_failed.emit("No se pudo crear la sala de Steam.")
+		return
+	steam_lobby_id = lobby_id
+	var peer := SteamMultiplayerPeer.new()
+	var err := peer.create_host(0)
+	if err != OK:
+		push_error("NetworkManager: fallo al crear el host de Steam (error %s)" % err)
+		lobby_join_failed.emit("No se pudo crear el host de la sala.")
+		Steam.leaveLobby(lobby_id)
+		steam_lobby_id = 0
+		return
+	peer.server_relay = true
 	multiplayer.multiplayer_peer = peer
-	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	_connect_peer_signals()
+	lobby_ready.emit(true)
 	# El spawn del host (peer 1) ya NO ocurre aqui (H6): espera a que main.gd
 	# termine el prologo + pantalla de eleccion de estilo y mande
 	# submit_style_choice, igual que cualquier otro peer.
 
-func join_game(ip: String) -> void:
+## Callback de Steam.joinLobby() (ver join_game() de arriba) -- tambien llega
+## al HOST (el propio Steam.createLobby() implica entrar a su propio lobby),
+## por eso se comprueba getLobbyOwner() == getSteamID() para no montar un
+## SteamMultiplayerPeer cliente encima del host que _on_lobby_created ya
+## configuro.
+func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int) -> void:
+	if response != Steam.CHAT_ROOM_ENTER_RESPONSE_SUCCESS:
+		push_error("NetworkManager: fallo al unirse a la sala %s (respuesta %s)" % [lobby_id, response])
+		lobby_join_failed.emit("No se pudo unir a la sala (puede que ya no exista o este llena).")
+		return
+	steam_lobby_id = lobby_id
+	var owner_id := Steam.getLobbyOwner(lobby_id)
+	if owner_id == Steam.getSteamID():
+		return # somos el host, _on_lobby_created ya monto el MultiplayerPeer
+	var peer := SteamMultiplayerPeer.new()
+	var err := peer.create_client(owner_id, 0)
+	if err != OK:
+		push_error("NetworkManager: fallo al crear el cliente de Steam hacia %s (error %s)" % [owner_id, err])
+		lobby_join_failed.emit("No se pudo conectar con el host de la sala.")
+		Steam.leaveLobby(lobby_id)
+		steam_lobby_id = 0
+		return
+	peer.server_relay = true
+	multiplayer.multiplayer_peer = peer
+	_connect_peer_signals()
+	lobby_ready.emit(false)
+
+## Callback de Steam.join_requested -- el jugador acepta una invitacion de
+## Steam (o pulsa "Unirse a la partida" desde la lista de amigos) MIENTRAS el
+## juego ya esta corriendo. Si ya estamos conectados a algo, se ignora (no
+## tiene sentido saltar de una sala a otra a media partida); si no, se guarda
+## el lobby_id para que lobby.gd se auto-una en cuanto lo consulte (ver
+## pending_invite_lobby_id arriba).
+func _on_join_requested(lobby_id: int, _friend_id: int) -> void:
 	if not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
 		return
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip, PORT)
-	if err != OK:
-		push_error("NetworkManager: no se pudo crear el cliente hacia %s (error %s)" % [ip, err])
+	pending_invite_lobby_id = lobby_id
+	invite_received.emit(lobby_id)
+
+## Abre el overlay de invitacion de Steam para el lobby activo -- boton
+## "Invitar amigos" del host en PanelSala (ver lobby.gd). Sustituye a mostrar
+## la IP local a mano que tenia el flujo de ENet: Steam ya sabe a que lobby
+## invitar, no hace falta que el jugador copie/pegue nada.
+func invite_friends() -> void:
+	if steam_lobby_id == 0:
 		return
-	multiplayer.multiplayer_peer = peer
-	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	# No se spawnea aqui: el spawn real lo dispara submit_style_choice en
-	# cuanto este cliente elige estilo y confirma la conexion (ver main.gd).
+	Steam.activateGameOverlayInviteDialog(steam_lobby_id)
+
+## Desconecta limpio y vuelve al estado offline (H_lobby: boton "Volver"/
+## "Salir de la sala" del lobby, ver scripts/ui/lobby.gd). No hace falta
+## desconectar peer_connected/peer_disconnected de aqui: siguen sirviendo
+## para la proxima partida (host_game/join_game reusan la misma conexion via
+## _connect_peer_signals, que ya evita duplicados).
+func disconnect_game() -> void:
+	if multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
+		return
+	if steam_lobby_id != 0:
+		Steam.leaveLobby(steam_lobby_id)
+		steam_lobby_id = 0
+	multiplayer.multiplayer_peer.close()
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	style_choice.clear()
+
+## host_game()/join_game() se pueden llamar mas de una vez a lo largo de la
+## vida del proceso ahora que existe un lobby con boton de "Volver" (crear
+## sala, cancelar, crear otra vez...) -- is_connected() evita apilar
+## conexiones duplicadas a _on_peer_connected/_on_peer_disconnected en cada
+## vuelta, cosa que antes no hacia falta porque solo se llamaba una vez por
+## partida.
+func _connect_peer_signals() -> void:
+	if not multiplayer.peer_connected.is_connected(_on_peer_connected):
+		multiplayer.peer_connected.connect(_on_peer_connected)
+	if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
+		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 func _on_peer_connected(_id: int) -> void:
 	pass # el spawn ya no depende de la conexion, ver submit_style_choice.
@@ -469,6 +678,36 @@ func _on_peer_disconnected(id: int) -> void:
 	var node := players_root.get_node_or_null(str(id))
 	if node != null:
 		node.queue_free()
+
+## Emitida en todos los peers (host incluido, ver confirm_iniciar_partida mas
+## abajo) cuando el host pulsa "Iniciar partida" en el lobby. scripts/ui/
+## lobby.gd la escucha para dar paso a main.gd._run_intro_flow (prologo ->
+## eleccion de estilo -> submit_style_choice), que ya asume que host_game/
+## join_game se llamaron antes desde el lobby.
+signal game_started
+
+## Pedido por el boton "Iniciar partida" del lobby (ver scripts/ui/lobby.gd),
+## visible solo si multiplayer.is_server() -- pero se valida aqui tambien por
+## si acaso, mismo criterio de no confiar ciegamente en el cliente que el
+## resto de submit_* de player.gd. any_peer+call_local+reliable y validacion
+## por sender_id, mismo patron que submit_style_choice de aqui abajo (este
+## RPC tambien ocurre antes de que exista ningun nodo Player al que atar la
+## autoridad).
+@rpc("any_peer", "call_local", "reliable")
+func submit_iniciar_partida() -> void:
+	if not multiplayer.is_server():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id != 0 and sender_id != 1:
+		return # solo el host (o su propia llamada local, sender_id 0) puede iniciar
+	confirm_iniciar_partida.rpc()
+
+## Confirma el inicio de partida igual en todos los peers -- mismo patron
+## confirm_* que el resto de este autoload: el host ya valido arriba, aqui
+## solo se replica el efecto (emitir game_started) a todo el mundo.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_iniciar_partida() -> void:
+	game_started.emit()
 
 ## Pedido por cada peer (host incluido) en cuanto termina la pantalla de
 ## eleccion de estilo y la conexion esta lista (ver main.gd _run_intro_flow).

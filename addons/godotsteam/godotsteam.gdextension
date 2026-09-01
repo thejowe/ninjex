@@ -1,0 +1,20 @@
+[configuration]
+entry_symbol = "godotsteam_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+; Ninjex es un proyecto Windows-only por ahora (ver network_manager.gd
+; cabecera) -- se recortaron los binarios de Linux/macOS/Android del paquete
+; oficial de GodotSteam para no arrastrar ~90 MB de binarios que no se usan.
+; Si el proyecto se porta a otra plataforma, hay que volver a descargar el
+; paquete completo desde https://codeberg.org/godotsteam/godotsteam/releases
+; (release "vX.XX-gde", asset "godotsteam-X.XX-gdextension-plugin-4.4.zip")
+; y restaurar las entradas correspondientes aqui.
+windows.debug.x86_64 = "res://addons/godotsteam/win64/libgodotsteam.windows.template_debug.x86_64.dll"
+windows.debug.x86_32 = "res://addons/godotsteam/win32/libgodotsteam.windows.template_debug.x86_32.dll"
+windows.release.x86_64 = "res://addons/godotsteam/win64/libgodotsteam.windows.template_release.x86_64.dll"
+windows.release.x86_32 = "res://addons/godotsteam/win32/libgodotsteam.windows.template_release.x86_32.dll"
+
+[dependencies]
+windows.x86_64 = { "res://addons/godotsteam/win64/steam_api64.dll": "" }
+windows.x86_32 = { "res://addons/godotsteam/win32/steam_api.dll": "" }
