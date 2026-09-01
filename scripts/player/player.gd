@@ -544,6 +544,8 @@ func _physics_process(delta: float) -> void:
 			_request_taberna_sentarse()
 		if Input.is_action_just_pressed("taberna_emote"):
 			_request_taberna_emote()
+		if Input.is_action_just_pressed("taberna_ver_desglose"):
+			_request_taberna_ver_desglose()
 		if Input.is_action_just_pressed("sastreria_siguiente_tinte"):
 			_request_sastreria_tinte()
 		if Input.is_action_just_pressed("casa_comprar_cocina"):
@@ -722,7 +724,7 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_silla_taberna_in_range(SILLA_RANGE) != null:
 		texto = "Pulsa ` para sentarte"
 	elif _find_nearest_taberna_in_range(HUB_RANGE) != null:
-		texto = "Pulsa X para el brindis, \\ para la pizarra de records, ' para comprar/cambiar musica, Flecha derecha para un gesto"
+		texto = "Pulsa X para el brindis, \\ para la pizarra de records, ' para comprar/cambiar musica, F10 para el desglose de contribucion, Flecha derecha para un gesto"
 	elif _find_nearest_sastreria_in_range(HUB_RANGE) != null:
 		texto = "Pulsa R para cambiar tu tinte"
 	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
@@ -731,7 +733,9 @@ func _update_interaction_hint() -> void:
 		var tienda_hint := _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE)
 		texto = "Pulsa 0 para comprar el pergamino de %s (%.0f fichas)" % [style_data.style_name, tienda_hint.precio_pergamino]
 	elif _find_nearest_tablon_in_range(HUB_RANGE) != null:
-		texto = "Tablon de misiones -- F1 Costa, F2 Bambu, F3 Peaje, F4 Cantera, F5 Ruinas"
+		# H6: el texto (incluido el objetivo explicito de Costa/Peaje/Cantera)
+		# vive ahora en TablonMisiones.texto_tablon() -- ver ese script.
+		texto = _find_nearest_tablon_in_range(HUB_RANGE).texto_tablon()
 	elif _find_nearest_extraccion_in_range(HUB_RANGE) != null:
 		if get_tree().get_nodes_in_group(GRUPO_JEFE_MISION).is_empty():
 			texto = "Pulsa F6 para volver a la Aldea con el botin"
@@ -2250,8 +2254,17 @@ func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado
 			pris.queue_free()
 	NetworkManager.dinero_manchado = nuevo_total
 	NetworkManager.usurero_deuda_pendiente = nueva_deuda
+	# Desglose de contribucion de la Taberna (plan-desarrollo.md, tarea
+	# reenganchada): precio_ganado es el importe que de verdad entra en
+	# dinero_manchado en esta venta (ya con el recorte del Usurero aplicado
+	# si tocaba), asi que sumarlo aqui es "cuanto ha metido este jugador al
+	# bote comun" sin inventar tracking nuevo -- reutiliza el mismo
+	# get_multiplayer_authority() que ya se calculaba para
+	# record_cuerpos_destrozados de abajo.
+	var peer_id_vendedor := get_multiplayer_authority()
+	if precio_ganado > 0.0:
+		NetworkManager.taberna_aportado_manchado[peer_id_vendedor] = NetworkManager.taberna_aportado_manchado.get(peer_id_vendedor, 0.0) + precio_ganado
 	if es_carnicero and cadaveres_vendidos > 0:
-		var peer_id_vendedor := get_multiplayer_authority()
 		NetworkManager.record_cuerpos_destrozados[peer_id_vendedor] = NetworkManager.record_cuerpos_destrozados.get(peer_id_vendedor, 0) + cadaveres_vendidos
 	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])
 	_status_label.modulate = Color(1, 1, 1)
@@ -2938,6 +2951,51 @@ func _texto_lider_record(record: Dictionary) -> String:
 			lider_valor = valor
 			lider_id = peer_id
 	return "jugador %d (%d)" % [lider_id, lider_valor]
+
+func _request_taberna_ver_desglose() -> void:
+	submit_taberna_ver_desglose.rpc_id(1)
+
+## Desglose de contribucion de la Taberna (plan-desarrollo.md, tarea
+## reenganchada tras H6: dependia del concepto de mision completada, que ya
+## existe desde el propio H5 en NetworkManager.misiones_completadas). Mismo
+## patron que submit_taberna_ver_records de arriba (solo lectura, reutiliza
+## confirm_casino_mensaje en vez de un confirm_ propio), pero en vez de
+## enseñar solo "quien va primero" en una categoria, lista a CADA jugador
+## con lo que ha metido al bote comun de dinero manchado
+## (NetworkManager.taberna_aportado_manchado, ver su comentario de cabecera)
+## y anade el contador de misiones del GRUPO entero -- las misiones no
+## tienen "quien la completo" de forma individual, las trae todo el grupo
+## junto al volver a extraccion (ver confirm_volver_hub), asi que ese dato
+## se muestra compartido en vez de forzar una atribucion que no existe.
+@rpc("any_peer", "call_local", "reliable")
+func submit_taberna_ver_desglose() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var taberna := _find_nearest_taberna_in_range(HUB_RANGE)
+	if taberna == null:
+		confirm_casino_mensaje.rpc("No hay ninguna taberna cerca")
+		return
+	var texto := "Desglose de la Taberna -- "
+	texto += "Aportado al bote (manchado) por jugador: %s  |  " % _texto_desglose_contribucion(NetworkManager.taberna_aportado_manchado)
+	texto += "Misiones completadas por el grupo: %d" % NetworkManager.misiones_completadas
+	confirm_casino_mensaje.rpc(texto)
+
+## Formatea "jugador <peer_id> (<valor>)" para TODOS los peer_id de un
+## Dictionary peer_id -> float, de mayor a menor aporte y separados por
+## comas -- a diferencia de _texto_lider_record de arriba (que solo enseña
+## al que va primero), esto es el desglose completo pedido en la tarea, uno
+## por cada jugador que haya aportado algo. "sin datos" si esta vacio.
+func _texto_desglose_contribucion(record: Dictionary) -> String:
+	if record.is_empty():
+		return "sin datos"
+	var peer_ids: Array = record.keys()
+	peer_ids.sort_custom(func(a, b): return record[a] > record[b])
+	var partes: Array[String] = []
+	for peer_id in peer_ids:
+		partes.append("jugador %d (%.0f)" % [peer_id, record[peer_id]])
+	return ", ".join(partes)
 
 func _request_taberna_musica() -> void:
 	submit_taberna_musica.rpc_id(1)

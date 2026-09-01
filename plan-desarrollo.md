@@ -63,7 +63,7 @@ Hub navegable en 4 alturas (Muelle con Taberna, Calle de los Faroles con Forja/H
 - [x] **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — tres áreas encadenadas, jefe de zona, vuelta a extracción. Agente: `narrative-agent`.
 - [x] **Historia y diálogos de NPCs** (H6, al final): tabernera, viejo maestro, usurero, pescador, con una línea nueva por misión completada. Agente: `narrative-agent`.
 - [x] **Extras de taberna**: música diegética, emotes, sillas, pizarra de deudas y récords. Agente: `hub-agent`.
-- [ ] **Desglose de contribución de la Taberna**: quedó bloqueado en H5 por falta del concepto de misión — ya existe, se puede reenganchar. Baja prioridad. Agente: `hub-agent`.
+- [x] **Desglose de contribución de la Taberna**: quedó bloqueado en H5 por falta del concepto de misión — ya existe, se puede reenganchar. Baja prioridad. Agente: `hub-agent`.
 
 No se retoma la votación de bóveda ni el Modo Mesa Alta salvo que el usuario lo pida explícitamente — esa sí es una decisión de diseño confirmada, no scope pendiente.
 
