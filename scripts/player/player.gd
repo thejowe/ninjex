@@ -322,6 +322,34 @@ var _sales_time_remaining: float = 0.0
 ## NetworkManager.brindis_damage_multiplier directamente en
 ## _current_damage_multiplier tambien sin variable local).
 
+## Bug real de red (confirmado con dos cuentas de Steam en vivo, ver
+## historial de este archivo): NetworkManager._spawn_player() (host) pone
+## set_multiplayer_authority(id) DESPUES de players_root.add_child(), pero el
+## MultiplayerSpawner (auto-spawn, ver main.tscn) solo replica la
+## instanciacion/nombre del nodo a los demas peers, NO llamadas de script
+## posteriores como set_multiplayer_authority -- eso es puramente local a la
+## instancia del host. Resultado: en la copia replicada de cada cliente, el
+## nodo Player quedaba con la autoridad por defecto de Godot (peer id 1, el
+## servidor) porque nadie mas la fijaba ahi. Para el nodo del propio host
+## (id 1) esto coincidia por pura casualidad; para el nodo de CUALQUIER OTRO
+## peer (id != 1), is_multiplayer_authority() daba false en la pantalla de
+## ESE MISMO jugador -- rompiendo la camara (ver _ready() mas abajo) Y todo
+## el gateo de _physics_process() (linea ~458: movimiento/ataques/input
+## entero detras de is_multiplayer_authority()), asi que ese jugador nunca
+## veia su propia camara seguirlo ni podia moverse en su propia pantalla,
+## aunque su nodo SI aparecia bien en la pantalla de los demas.
+##
+## Fix estandar de los demos oficiales de multiplayer de Godot: derivar la
+## autoridad del NOMBRE del nodo (que si viaja con la replicacion del spawn,
+## ya que network_manager.gd pone player.name = str(id) ANTES de add_child)
+## en _enter_tree(), que corre en CADA peer (host y todos los clientes) para
+## CADA instancia replicada, sin depender de que nadie mas la replique. Se
+## deja intacto el set_multiplayer_authority(id) de _spawn_player en el host
+## (no estorba, y es el primero en ejecutarse alli) -- este _enter_tree() es
+## el que faltaba para que los CLIENTES tambien la fijen en su propia copia.
+func _enter_tree() -> void:
+	set_multiplayer_authority(str(name).to_int())
+
 func _ready() -> void:
 	if style_data == null:
 		style_data = load(DEFAULT_STYLE_PATH)
