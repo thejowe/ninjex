@@ -64,8 +64,9 @@ var _ultimo_tipo_dano: String = "contundente"
 ## Jugador (Fisico) que tiene a este enemigo agarrado. Mientras no sea null,
 ## la IA se congela por completo y la posicion la controla quien agarra
 ## (ver player.gd _process_grab_hold). Lo pone/quita el host via las RPC de
-## agarre/lanzamiento/suelta -- ver submit_grab_attempt / confirm_throw /
-## confirm_release_grab en player.gd.
+## agarre/lanzamiento/sometimiento -- ver submit_grab_attempt / confirm_throw /
+## confirm_someter_prisionero en player.gd (H6: aguantar el agarre sin lanzar
+## ya no suelta al enemigo, lo captura vivo -- ver Prisionero.gd).
 var agarrado_por: Node2D = null
 ## Tras un lanzamiento, breve ventana donde la IA no pisa el velocity del
 ## impacto (si no, _procesar_persecucion lo sobreescribe el mismo frame).
@@ -329,7 +330,7 @@ func morir(cadaver_id: int, tipo_dano_final: String) -> void:
 
 ## Efecto breve antes de borrar al enemigo (encogerse + flash blanco + fade)
 ## en vez del queue_free() instantaneo de antes -- solo retrasa el borrado
-## con un await corto, igual que _schedule_grab_release en player.gd. Corre
+## con un await corto, igual que _schedule_grab_someter en player.gd. Corre
 ## identico en todos los peers porque morir() ya es un RPC call_local
 ## reliable, asi que el efecto se ve igual en todos.
 func _play_death_effect() -> void:

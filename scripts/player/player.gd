@@ -685,8 +685,9 @@ func _update_money_label() -> void:
 ## puntos estaticos).
 func _update_interaction_hint() -> void:
 	var texto := ""
-	if _find_nearest_free_cadaver(CADAVER_PICKUP_RANGE) != null:
-		texto = "Pulsa G para recoger el cadaver"
+	var cargable := _find_nearest_free_cadaver(CADAVER_PICKUP_RANGE)
+	if cargable != null:
+		texto = "Pulsa G para recoger el prisionero" if cargable is Prisionero else "Pulsa G para recoger el cadaver"
 	elif _find_nearest_comprador_in_range(VENTA_RANGE) != null:
 		texto = "Pulsa V para vender" if not carried_cadaver_paths.is_empty() else "Pulsa V para vender (no llevas ningun cadaver)"
 	elif _find_nearest_cambista_in_range(CASINO_RANGE) != null:
@@ -967,11 +968,14 @@ func _get_grabbed_enemy() -> EnemigoSimple:
 		return null
 	return get_node_or_null(grabbed_enemy_path) as EnemigoSimple
 
-## Cadaver mas cercano dentro de range_max que nadie este cargando ya.
-## Proximidad simple, sin cono: recoger no necesita apuntar, solo estar
-## cerca (a diferencia del Agarre, que si apunta a un enemigo vivo).
-func _find_nearest_free_cadaver(range_max: float) -> Cadaver:
-	var nearest: Cadaver = null
+## Cadaver o Prisionero mas cercano dentro de range_max que nadie este
+## cargando ya. Proximidad simple, sin cono: recoger no necesita apuntar,
+## solo estar cerca (a diferencia del Agarre, que si apunta a un enemigo
+## vivo). H6: mismo criterio para ambos tipos -- reutiliza el sistema de
+## carga de Cadaver tal cual (ver cabecera de Prisionero.gd), asi que "lo
+## mas cercano cargable" tiene que mirar los dos grupos.
+func _find_nearest_free_cadaver(range_max: float) -> Node2D:
+	var nearest: Node2D = null
 	var best_dist: float = INF
 	for c in get_tree().get_nodes_in_group(Cadaver.GRUPO_CADAVERES):
 		if not (c is Cadaver) or c.cargado_por_peer_id != 0:
@@ -980,6 +984,13 @@ func _find_nearest_free_cadaver(range_max: float) -> Cadaver:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = c
+	for p in get_tree().get_nodes_in_group(Prisionero.GRUPO_PRISIONEROS):
+		if not (p is Prisionero) or p.cargado_por_peer_id != 0:
+			continue
+		var dist: float = global_position.distance_to(p.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = p
 	return nearest
 
 ## Comprador mas cercano dentro de range_max. Mismo criterio de proximidad
@@ -1423,22 +1434,44 @@ func confirm_grab(path: NodePath, consume_potenciador: bool) -> void:
 		_potenciador_damage_bonus = 0.0
 		_update_potenciador_visual()
 	if multiplayer.is_server():
-		_schedule_grab_release(target, style_data.grab_hold_duration)
+		_schedule_grab_someter(target, style_data.grab_hold_duration)
 
-## Suelta el agarre solo si nadie lo ha lanzado antes de grab_hold_duration.
-## Solo lo programa el host (que es quien decide cuando confirmar cosas);
-## el resultado se retransmite igual que cualquier otra confirmacion.
-func _schedule_grab_release(target: EnemigoSimple, delay: float) -> void:
+## H6: aguantar el Agarre hasta el final de grab_hold_duration sin lanzar ya
+## NO libera al enemigo -- lo somete y genera un Prisionero cargable (ver
+## Prisionero.gd, cabecera, para el porque de esta decision en vez de una
+## septima tecnica en la ranura Sellos). Lanzar (confirm_throw) sigue siendo
+## la unica forma de evitarlo dentro de la ventana. Solo lo programa el host
+## (que es quien decide cuando confirmar cosas); el resultado se retransmite
+## igual que cualquier otra confirmacion.
+func _schedule_grab_someter(target: EnemigoSimple, delay: float) -> void:
 	await get_tree().create_timer(delay).timeout
 	if is_instance_valid(target) and target.agarrado_por == self:
-		confirm_release_grab.rpc()
+		# next_cadaver_id() se pide UNA vez aqui (esto solo corre en el host,
+		# ver el guard en confirm_grab) y viaja como argumento del RPC --
+		# mismo criterio que EnemigoSimple.recibir_daño con el id de cadaver,
+		# evita que cada peer tire de su propio contador local dentro de la
+		# RPC call_local y colisione nombres de nodo.
+		confirm_someter_prisionero.rpc(target.get_path(), NetworkManager.next_cadaver_id(), target.valor_cadaver_base)
 
+## Convierte al enemigo agarrado en un Prisionero vivo. Nace LIBRE en el
+## suelo (cargado_por_peer_id = 0), igual que un Cadaver recien spawneado --
+## hay que recogerlo aparte con G, no se auto-carga en quien lo sometio.
 @rpc("any_peer", "call_local", "reliable")
-func confirm_release_grab() -> void:
-	var target := _get_grabbed_enemy()
-	if target != null and is_instance_valid(target):
-		target.agarrado_por = null
+func confirm_someter_prisionero(path: NodePath, prisionero_id: int, valor_base: float) -> void:
+	var target := get_node_or_null(path) as EnemigoSimple
 	grabbed_enemy_path = NodePath("")
+	if target == null or not is_instance_valid(target):
+		return
+	target.agarrado_por = null
+	var root: Node = NetworkManager.cadavers_root
+	if root != null:
+		var scene: PackedScene = preload("res://scenes/cadavers/prisionero.tscn")
+		var prisionero: Prisionero = scene.instantiate()
+		prisionero.valor_base = valor_base
+		prisionero.name = "prisionero_%d" % prisionero_id
+		root.add_child(prisionero)
+		prisionero.global_position = target.global_position
+	target.queue_free()
 
 ## Mientras haya alguien agarrado, se mantiene delante del jugador. Solo lo
 ## mueve la autoridad del personaje (ver _physics_process), igual que el
@@ -1457,11 +1490,14 @@ func _process_grab_hold() -> void:
 ## la vez en vez de uno solo delante.
 func _process_carry_hold() -> void:
 	for i in range(carried_cadaver_paths.size()):
-		var cad := get_node_or_null(carried_cadaver_paths[i]) as Cadaver
-		if cad == null or not is_instance_valid(cad):
+		# Cadaver o Prisionero (H6, ver cabecera de Prisionero.gd) -- ambos
+		# son Node2D con global_position, no hace falta el tipo concreto
+		# para seguir al jugador.
+		var node := get_node_or_null(carried_cadaver_paths[i])
+		if node == null or not is_instance_valid(node) or not (node is Cadaver or node is Prisionero):
 			continue
 		var offset: Vector2 = Vector2.LEFT.rotated(_torso.rotation) * (CADAVER_CARRY_OFFSET + i * CADAVER_CARRY_SPACING)
-		cad.global_position = global_position + offset
+		(node as Node2D).global_position = global_position + offset
 
 # =========================================================================
 # Zona (Fuego/Viento) -- mantener Q carga, soltar coloca.
@@ -2089,22 +2125,48 @@ func submit_toggle_carry() -> void:
 	if not carried_cadaver_paths.is_empty():
 		confirm_drop_cadaver.rpc(carried_cadaver_paths[-1])
 
+## H6: Cadaver y Prisionero comparten cargado_por_peer_id/carried_cadaver_paths
+## (ver cabecera de Prisionero.gd) -- una rama por tipo en vez de un sistema
+## de carga paralelo.
 @rpc("any_peer", "call_local", "reliable")
 func confirm_pickup_cadaver(path: NodePath) -> void:
 	var cad := get_node_or_null(path) as Cadaver
-	if cad == null or not is_instance_valid(cad) or cad.cargado_por_peer_id != 0:
-		return # otro jugador se lo llevo entre que el host decidio y esto llega
-	cad.cargado_por_peer_id = get_multiplayer_authority()
-	carried_cadaver_paths.append(path)
+	if cad != null and is_instance_valid(cad) and cad.cargado_por_peer_id == 0:
+		cad.cargado_por_peer_id = get_multiplayer_authority()
+		carried_cadaver_paths.append(path)
+		return
+	var pris := get_node_or_null(path) as Prisionero
+	if pris != null and is_instance_valid(pris) and pris.cargado_por_peer_id == 0:
+		pris.cargado_por_peer_id = get_multiplayer_authority()
+		carried_cadaver_paths.append(path)
+	# Si ninguno de los dos aplica (nulo, invalido o ya cargado por otro):
+	# otro jugador se lo llevo entre que el host decidio y esto llega.
 
 @rpc("any_peer", "call_local", "reliable")
 func confirm_drop_cadaver(path: NodePath) -> void:
 	carried_cadaver_paths.erase(path)
 	var cad := get_node_or_null(path) as Cadaver
-	if cad == null or not is_instance_valid(cad):
+	if cad != null and is_instance_valid(cad):
+		cad.cargado_por_peer_id = 0
+		cad.global_position = global_position + Vector2.RIGHT.rotated(_torso.rotation) * CADAVER_DROP_OFFSET
 		return
-	cad.cargado_por_peer_id = 0
-	cad.global_position = global_position + Vector2.RIGHT.rotated(_torso.rotation) * CADAVER_DROP_OFFSET
+	var pris := get_node_or_null(path) as Prisionero
+	if pris != null and is_instance_valid(pris):
+		pris.cargado_por_peer_id = 0
+		pris.global_position = global_position + Vector2.RIGHT.rotated(_torso.rotation) * CADAVER_DROP_OFFSET
+
+## Cuando un Prisionero cargado muere de verdad (dano real, no la captura
+## inicial) se convierte en un Cadaver normal -- ver Prisionero.morir() y su
+## comentario de cabecera para la decision de diseño. Aqui solo se actualiza
+## la lista de carga de quien lo llevaba para que el Cadaver nuevo ocupe su
+## sitio, igual que si lo hubiera recogido el mismo (si no, el NodePath
+## muerto del prisionero se quedaria para siempre contando contra
+## MAX_CADAVERES_CARGADOS sin nada que vender).
+func reemplazar_prisionero_por_cadaver(prisionero_path: NodePath, cadaver_path: NodePath) -> void:
+	var idx := carried_cadaver_paths.find(prisionero_path)
+	if idx == -1:
+		return
+	carried_cadaver_paths[idx] = cadaver_path
 
 func _request_vender() -> void:
 	submit_vender.rpc_id(1)
@@ -2132,10 +2194,16 @@ func submit_vender() -> void:
 	var vendidos: Array[NodePath] = []
 	for path in carried_cadaver_paths:
 		var cad := get_node_or_null(path) as Cadaver
-		if cad == null or not is_instance_valid(cad):
+		if cad != null and is_instance_valid(cad):
+			total_precio += comprador.calcular_precio(cad.estado_conservacion, cad.valor_base)
+			vendidos.append(path)
 			continue
-		total_precio += comprador.calcular_precio(cad.estado_conservacion, cad.valor_base)
-		vendidos.append(path)
+		var pris := get_node_or_null(path) as Prisionero
+		if pris != null and is_instance_valid(pris):
+			# H6: sin pasar por Comprador.calcular_precio -- ver comentario de
+			# EconomiaCadaveres.MULTIPLICADOR_PRISIONERO.
+			total_precio += pris.valor_base * EconomiaCadaveres.MULTIPLICADOR_PRISIONERO
+			vendidos.append(path)
 	if vendidos.is_empty():
 		return
 	# Usurero: mientras quede deuda pendiente (importe real, no un contador
@@ -2166,16 +2234,25 @@ func submit_vender() -> void:
 ## Usurero ya decidida por el host en submit_vender().
 @rpc("any_peer", "call_local", "reliable")
 func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, nueva_deuda: float, es_carnicero: bool) -> void:
+	# H6: se cuentan los Cadaver reales por separado de los Prisionero -- ver
+	# el uso de esta cuenta mas abajo con record_cuerpos_destrozados (un
+	# prisionero vendido vivo no es un "cadaver destrozado").
+	var cadaveres_vendidos := 0
 	for path in vendidos:
 		carried_cadaver_paths.erase(path)
 		var cad := get_node_or_null(path) as Cadaver
 		if cad != null and is_instance_valid(cad):
+			cadaveres_vendidos += 1
 			cad.queue_free()
+			continue
+		var pris := get_node_or_null(path) as Prisionero
+		if pris != null and is_instance_valid(pris):
+			pris.queue_free()
 	NetworkManager.dinero_manchado = nuevo_total
 	NetworkManager.usurero_deuda_pendiente = nueva_deuda
-	if es_carnicero:
+	if es_carnicero and cadaveres_vendidos > 0:
 		var peer_id_vendedor := get_multiplayer_authority()
-		NetworkManager.record_cuerpos_destrozados[peer_id_vendedor] = NetworkManager.record_cuerpos_destrozados.get(peer_id_vendedor, 0) + vendidos.size()
+		NetworkManager.record_cuerpos_destrozados[peer_id_vendedor] = NetworkManager.record_cuerpos_destrozados.get(peer_id_vendedor, 0) + cadaveres_vendidos
 	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])
 	_status_label.modulate = Color(1, 1, 1)
 	if recorte_usurero > 0.0:
@@ -2902,7 +2979,7 @@ func submit_taberna_musica() -> void:
 ## host del resto del kit (nada que validar, ni fondos que proteger de un
 ## cliente mentiroso). Broadcast directo call_local en vez: quien pulsa la
 ## tecla dispara el RPC en su propio nodo y todos los peers ven la misma
-## pose (mismo NodePath -- ver confirm_release_grab.rpc() para el mismo
+## pose (mismo NodePath -- ver confirm_someter_prisionero.rpc() para el mismo
 ## patron de broadcast directo sin pasar por el host). Sin estado
 ## persistente en NetworkManager (pedido explicito de la tarea):
 ## _sentado_taberna es una var local de ESTE nodo, se pierde si el jugador
