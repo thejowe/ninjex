@@ -800,6 +800,15 @@ func _spawn_player(id: int, style_path: String = "") -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_style_choice(id: int, style_path: String) -> void:
 	style_choice[id] = style_path
+	_reaplicar_estilo_si_hace_falta(id, style_path)
+
+## Extraido de confirm_style_choice (arriba) para poder reutilizarlo tambien
+## desde _reposicionar_jugadores: busca el nodo del peer `id` y, si su
+## style_data no coincide con lo que dice style_choice, lo corrige via
+## apply_synced_style(). Callable en cualquier momento (no solo cuando llega
+## el RPC de eleccion) sin riesgo: el guard de igualdad por referencia lo hace
+## un no-op si ya esta bien.
+func _reaplicar_estilo_si_hace_falta(id: int, style_path: String) -> void:
 	if players_root == null:
 		return
 	var node := players_root.get_node_or_null(str(id))
@@ -807,7 +816,7 @@ func confirm_style_choice(id: int, style_path: String) -> void:
 		return # el nodo aun no ha llegado via MultiplayerSpawner; _enter_tree() lo leera de style_choice cuando llegue
 	var style: StyleData = load(style_path)
 	if node.style_data == style:
-		return # ya tiene el estilo correcto (camino normal del host), no repetir el reset
+		return # ya tiene el estilo correcto, no repetir el reset
 	node.apply_synced_style(style)
 
 func _spawn_position_for(id: int) -> Vector2:
@@ -903,9 +912,26 @@ func confirm_recarga_maquina(nuevo_usos: int) -> void:
 ## peer_id, mismo calculo que _spawn_position_for usa para jugadores nuevos
 ## -- asi entrar/salir de una mision reposiciona a todo el grupo de golpe en
 ## vez de dejarlos flotando en las coordenadas de la escena anterior.
+##
+## Tambien reaplica el estilo de cada jugador desde style_choice (mismo
+## guard idempotente que ya usa confirm_style_choice, ver
+## _reaplicar_estilo_si_hace_falta): investigando un reporte en vivo de dos
+## cuentas de Steam reales (estilo de un cliente no-host volvia a verse como
+## el default de Fuego justo al ENTRAR en una mision, tras funcionar bien en
+## el Hub) no se encontro ningun punto del codigo de mision/Hub que mute
+## style_data -- ni en lectura estatica ni reproduciendolo con dos procesos
+## reales por red (ENet local, RPC real, confirm_iniciar_mision disparado a
+## proposito lo antes posible para forzar el peor caso de orden de llegada:
+## el estilo sobrevivio siempre en esa prueba). Sin poder reproducirlo con
+## Steam real, se añade esta reaplicacion aqui como red de seguridad barata
+## (no-op si ya esta bien) para el punto exacto donde el usuario lo vio
+## romperse, por si la causa real es algo propio del transporte Steam que
+## esta prueba con ENet no cubre.
 func _reposicionar_jugadores() -> void:
 	if players_root == null:
 		return
 	for jugador in players_root.get_children():
 		var id := int(jugador.name)
 		jugador.global_position = _spawn_position_for(id)
+		if style_choice.has(id):
+			_reaplicar_estilo_si_hace_falta(id, style_choice[id])
