@@ -725,6 +725,15 @@ func submit_style_choice(style_path: String) -> void:
 		return # ya eligio antes (RPC duplicado o reconexion), no re-spawnear
 	style_choice[sender_id] = style_path
 	_spawn_player(sender_id, style_path)
+	# Bug hermano de autoridad/posicion (commits aa957b1/f224c9a): _spawn_player
+	# de arriba solo deja style_data bien puesto en la copia LOCAL del host (el
+	# MultiplayerSpawner no replica mutaciones de script, solo reinstancia la
+	# escena desde cero en cada otro peer). A diferencia de autoridad/posicion,
+	# el estilo no se puede derivar localmente en cada peer (es una eleccion
+	# privada, no un dato ya sincronizado) -- hay que difundirlo por RPC
+	# explicito. Ver confirm_style_choice mas abajo para el detalle de por que
+	# hace falta y como se resuelve el riesgo de orden de llegada.
+	confirm_style_choice.rpc(sender_id, style_path)
 
 func _spawn_player(id: int, style_path: String = "") -> void:
 	if players_root == null:
@@ -746,6 +755,60 @@ func _spawn_player(id: int, style_path: String = "") -> void:
 	players_root.add_child(player, true)
 	player.set_multiplayer_authority(id)
 	player.global_position = _spawn_position_for(id)
+
+## Difunde el estilo elegido por `id` a TODOS los peers (host incluido, via
+## call_local) -- tercer bug de la misma familia que autoridad
+## (set_multiplayer_authority, commit aa957b1) y posicion (global_position,
+## commit f224c9a): _spawn_player() de arriba hace
+## `player.style_data = load(style_path)` ANTES de add_child, pero eso es una
+## mutacion de script sobre la instancia en memoria del HOST -- el
+## MultiplayerSpawner en modo auto-spawn no la replica, en cada OTRO peer
+## simplemente reinstancia player.tscn desde cero. Resultado sin este fix: en
+## la copia de cualquier peer que no sea el host, style_data nace null y
+## player.gd::_ready() cae al estilo por defecto (Fuego) -- ese jugador ve y
+## usa el estilo equivocado EN SU PROPIA PANTALLA (el host, que renderiza su
+## propia copia autoritativa, lo ve bien; por eso el sintoma es "el host ve
+## el estilo correcto pero el propio jugador no").
+##
+## Diferencia clave con autoridad/posicion: esos dos se resolvieron
+## DERIVANDO el valor localmente en cada peer sin tocar la red (el nombre del
+## nodo y spawn_points ya viajan/estan sincronizados). El estilo NO se puede
+## derivar asi -- es una eleccion privada de cada jugador que ningun otro
+## peer puede adivinar -- por eso hace falta este RPC explicito, disparado
+## por el host justo despues de _spawn_player (ver submit_style_choice).
+##
+## Riesgo de orden de llegada: no hay garantia documentada de que la
+## replicacion del MultiplayerSpawner (disparada por el add_child dentro de
+## _spawn_player) y este RPC manual (lanzado inmediatamente despues, mismo
+## frame, mismo canal reliable) lleguen en ese mismo orden en un peer remoto
+## -- se cubren las dos posibilidades en vez de asumir una:
+## - Si este RPC llega ANTES de que el nodo exista todavia en este peer: el
+##   `get_node_or_null` de abajo da null y no hay nada que tocar aqui, pero
+##   style_choice[id] ya queda guardado (a diferencia de antes, donde solo el
+##   host lo tenia) -- player.gd::_enter_tree() (que Godot garantiza que
+##   corre DESPUES, en cuanto el nodo replicado entra al arbol) lo lee de ahi.
+## - Si este RPC llega DESPUES (el nodo ya existe, ya paso por _enter_tree()/
+##   _ready() con el estilo por defecto): se aplica aqui mismo, directamente
+##   sobre el nodo ya existente, via Player.apply_synced_style() (que
+##   reutiliza _apply_style_reset(), la misma funcion que ya usa el hot-swap
+##   de debug _handle_debug_style_switch, para reiniciar el estado
+##   dependiente de estilo: chakra/vida/combo/etc.).
+## El guard `node.style_data == style` evita repetir ese reset en el HOST
+## (que ya aplico el estilo correcto de forma sincrona en _spawn_player antes
+## de este RPC) -- load() de un .tres devuelve la misma instancia cacheada
+## para la misma ruta, asi que la comparacion por referencia es valida.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_style_choice(id: int, style_path: String) -> void:
+	style_choice[id] = style_path
+	if players_root == null:
+		return
+	var node := players_root.get_node_or_null(str(id))
+	if node == null:
+		return # el nodo aun no ha llegado via MultiplayerSpawner; _enter_tree() lo leera de style_choice cuando llegue
+	var style: StyleData = load(style_path)
+	if node.style_data == style:
+		return # ya tiene el estilo correcto (camino normal del host), no repetir el reset
+	node.apply_synced_style(style)
 
 func _spawn_position_for(id: int) -> Vector2:
 	if spawn_points.is_empty():

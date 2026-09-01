@@ -379,9 +379,30 @@ var _sales_time_remaining: float = 0.0
 ## sufre este problema -- cada peer fija bien la posicion de su propio nodo
 ## autoritativo ahi. Por eso este _enter_tree() solo necesita cubrir el spawn
 ## inicial, no hace falta ningun flag de "ya posicionado".
+## Tercer bug de la misma familia que autoridad/posicion de arriba (mismo
+## patron confirmado con dos cuentas de Steam en vivo), esta vez con
+## style_data (el estilo elegido en la pantalla previa al spawn: Fuego/
+## Viento/Fisico/Agua/Rayo/Tierra) -- ver NetworkManager._spawn_player(),
+## que solo lo deja bien puesto en la copia LOCAL del host, y
+## NetworkManager.confirm_style_choice(), el RPC que lo arregla.
+##
+## A diferencia de autoridad/posicion, el estilo NO se puede derivar
+## localmente aqui (no es un dato ya sincronizado como el nombre del nodo o
+## spawn_points, es una eleccion privada de cada jugador) -- por eso hace
+## falta leerlo de NetworkManager.style_choice, el Dictionary que
+## confirm_style_choice ya sincroniza en TODOS los peers (no solo en el
+## host). Esto cubre la rama "el RPC de confirmacion llego ANTES de que este
+## nodo entrara al arbol" del riesgo de orden documentado alli: si ya esta
+## disponible, se aplica aqui, ANTES de _ready() (que si no, cargaria el
+## estilo por defecto). Si todavia no esta disponible (llegara despues),
+## style_data se queda null aqui y confirm_style_choice lo aplicara el mismo
+## cuando llegue el RPC, encontrando el nodo ya en el arbol.
 func _enter_tree() -> void:
 	set_multiplayer_authority(str(name).to_int())
 	global_position = NetworkManager._spawn_position_for(str(name).to_int())
+	var synced_style_path: String = NetworkManager.style_choice.get(str(name).to_int(), "")
+	if synced_style_path != "":
+		style_data = load(synced_style_path)
 
 func _ready() -> void:
 	if style_data == null:
@@ -900,6 +921,20 @@ func _process_potenciador_dash(delta: float) -> void:
 	_potenciador_dash_active_time -= delta
 	var t_despues: float = 1.0 - clamp(_potenciador_dash_active_time / max(_potenciador_dash_total_time, 0.001), 0.0, 1.0)
 	_move_lerp_step(_potenciador_dash_from, _potenciador_dash_to, t_antes, t_despues)
+
+## Punto de entrada publico para NetworkManager.confirm_style_choice (ver su
+## comentario de cabecera para el detalle completo del bug/fix): aplica un
+## estilo llegado por RPC directamente sobre este nodo ya spawneado, para la
+## rama "el RPC de confirmacion llego DESPUES de que el nodo ya existiera y
+## ya hubiera arrancado con el estilo por defecto". Reutiliza
+## _apply_style_reset(), la misma funcion que ya usa el hot-swap de debug de
+## abajo, para reiniciar el estado dependiente de estilo (chakra/vida/combo/
+## etc.) -- expuesta sin guion bajo (a diferencia de _apply_style_reset) a
+## proposito: es la unica funcion de este bloque pensada para llamarse desde
+## fuera del nodo (NetworkManager), el resto son puramente internas.
+func apply_synced_style(new_style_data: StyleData) -> void:
+	style_data = new_style_data
+	_apply_style_reset()
 
 ## Ayuda de playtest solo local (no pasa por red): cambia style_data del
 ## propio jugador. Ver comentario de cabecera.
