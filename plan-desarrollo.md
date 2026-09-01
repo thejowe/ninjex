@@ -58,8 +58,9 @@ Hub navegable en 4 alturas (Muelle con Taberna, Calle de los Faroles con Forja/H
 **Este checklist ES el todolist de código, no una copia.** Vive en este archivo a propósito, porque es lo único que llega igual a cualquier dispositivo con un `git pull` — una herramienta tipo `TaskList` puede no existir según el entorno donde corra la sesión (no es parte del repo, no viaja con git). Si en tu sesión sí existe una herramienta de tareas, úsala como ayuda visual si quieres, pero **la fuente de verdad es marcar `[x]` aquí y hacer commit** — nunca al revés.
 
 - [ ] **Playtest de validación con gente real** de H4/H5/H6. Ninguno de los recortes de H4 (sin votación) se ha probado todavía con un grupo real jugando a la vez.
+- [ ] **Mob murciélago** (scope nuevo, pendiente para DESPUÉS del playtest — no lanzar todavía). Poca vida, estorba/interrumpe (sin ser una amenaza de daño relevante), no deja cadáver al morir, sin bioma asignado todavía (alcance genérico, no específico de un bioma concreto). Depende del veredicto del playtest de H4/H5/H6 de arriba. Agente: `combat-agent`.
 - [x] **Fichas y tienda de pergaminos** (H6). Desbloqueó la trampa de Sellos en Cartas Selladas. Agente: `casino-agent`.
-- [x] **Falsificador, clan rival y prisioneros vivos** (H6, mecanismo): compradores y captura vía Agarre construidos y documentados. **Pendiente de baja prioridad**: engancharlos como objetivo explícito dentro de una misión real. Agente: `economy-agent`.
+- [x] **Falsificador, clan rival y prisioneros vivos** (H6, mecanismo): compradores y captura vía Agarre construidos y documentados. Agente: `economy-agent`.
 - [x] **Los 5 biomas y el sistema de misión** (H6): Costa, Bosque de Bambú, Camino de Peaje, Cantera Vieja, Ruinas del Clan — tres áreas encadenadas, jefe de zona, vuelta a extracción. Agente: `narrative-agent`.
 - [x] **Historia y diálogos de NPCs** (H6, al final): tabernera, viejo maestro, usurero, pescador, con una línea nueva por misión completada. Agente: `narrative-agent`.
 - [x] **Extras de taberna**: música diegética, emotes, sillas, pizarra de deudas y récords. Agente: `hub-agent`.
