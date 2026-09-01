@@ -259,6 +259,27 @@ var record_casino_perdidas: Dictionary = {}
 ## Solo lo muta player.gd confirm_vender.
 var record_cuerpos_destrozados: Dictionary = {}
 
+## Desglose de contribucion de la Taberna (plan-desarrollo.md: "quedo
+## bloqueado en H5 por falta del concepto de mision -- ya existe, se puede
+## reenganchar"). Cuanto dinero MANCHADO ha metido cada jugador al bote
+## comun vendiendo cadaveres/prisioneros -- mismo patron Dictionary
+## peer_id -> valor que record_casino_perdidas/record_cuerpos_destrozados de
+## arriba (float en vez de int porque esto es dinero, no un contador de
+## sucesos). Sin entrada == 0. Solo lo muta player.gd confirm_vender,
+## sumando precio_ganado (el importe que de verdad entra en dinero_manchado
+## en esa venta, ya con el recorte del Usurero aplicado si tocaba) al mismo
+## peer_id que ese metodo ya calculaba para record_cuerpos_destrozados -- no
+## es tracking nuevo de "quien vendio", es el mismo dato reutilizado.
+##
+## No incluye dinero_limpio (Cambista/premios de casino): esos ingresos no
+## tienen un "vendedor" analogo de forma natural en el codigo actual, y las
+## misiones tampoco tienen atribucion individual (las completa el grupo
+## entero al volver a extraccion, ver confirm_volver_hub) -- por eso el
+## desglose de la Taberna (player.gd submit_taberna_ver_desglose) muestra
+## misiones_completadas como dato COMPARTIDO del grupo en vez de forzar una
+## atribucion por jugador que no existe.
+var taberna_aportado_manchado: Dictionary = {}
+
 ## Musica diegetica de la Taberna (H6 extra, ver comentario de cabecera de
 ## taberna.gd) -- lista FIJA comprable en cualquier orden, compra UNICA y
 ## PERMANENTE de GRUPO (no por jugador, mismo criterio que
