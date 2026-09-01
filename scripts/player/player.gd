@@ -347,8 +347,41 @@ var _sales_time_remaining: float = 0.0
 ## deja intacto el set_multiplayer_authority(id) de _spawn_player en el host
 ## (no estorba, y es el primero en ejecutarse alli) -- este _enter_tree() es
 ## el que faltaba para que los CLIENTES tambien la fijen en su propia copia.
+##
+## Bug de seguimiento al de arriba (mismo patron, confirmado con dos cuentas
+## de Steam en vivo): NetworkManager._spawn_player() tambien hace
+## `player.global_position = _spawn_position_for(id)` DESPUES de add_child --
+## exactamente igual que set_multiplayer_authority(), esa asignacion es una
+## mutacion de script local a la instancia del HOST, no algo que el
+## MultiplayerSpawner replique. Antes del fix de autoridad de arriba esto
+## coincidia por casualidad: el host era la autoridad de TODOS los nodos en
+## TODAS las pantallas, asi que el MultiplayerSynchronizer (properties/0 de
+## player.tscn, replica ".:position") difundia la posicion que el host habia
+## puesto en su copia. Al arreglar la autoridad, cada peer paso a ser la
+## fuente de verdad SOLO de su propio nodo -- pero la copia local de ESE peer
+## de su propio nodo nunca recibio la posicion de spawn (esa linea solo corrio
+## en la copia del host, sobre un nodo que ya no es el que se replica), asi
+## que se quedaba en el Vector2.ZERO por defecto de player.tscn y ESO era lo
+## que se difundia a todo el mundo. Mismo arreglo: derivarla localmente en
+## cada peer, aqui mismo, con el mismo id que ya usamos para la autoridad.
+## NetworkManager.spawn_points ya esta poblado en este punto en todo peer:
+## main.gd._ready() lo rellena desde $TestRoom/PlayerSpawns (parte de la
+## escena estatica que cada peer carga localmente, sin red) ANTES de que el
+## MultiplayerSpawner (tambien hijo de main.tscn) pueda spawnear ningun
+## Player -- ver comentario de cabecera de network_manager.gd _spawn_player.
+##
+## Esto NO se re-dispara durante cambios de mision/Hub: confirm_iniciar_mision/
+## confirm_volver_hub NO reparentan los nodos Player (se quedan fijos bajo
+## Players todo el rato); lo que entra/sale del arbol es la escena del bioma
+## bajo mission_root. El reposicionamiento de jugadores en esos cambios lo
+## hace NetworkManager._reposicionar_jugadores(), que es distinto: corre via
+## RPC call_local en TODOS los peers por igual (no solo el host), asi que no
+## sufre este problema -- cada peer fija bien la posicion de su propio nodo
+## autoritativo ahi. Por eso este _enter_tree() solo necesita cubrir el spawn
+## inicial, no hace falta ningun flag de "ya posicionado".
 func _enter_tree() -> void:
 	set_multiplayer_authority(str(name).to_int())
+	global_position = NetworkManager._spawn_position_for(str(name).to_int())
 
 func _ready() -> void:
 	if style_data == null:
