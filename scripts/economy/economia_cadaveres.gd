@@ -21,3 +21,12 @@ const MULTIPLICADOR_TIPO_DANO := {
 	"aplastamiento": 0.6, # Lanzamiento del Fisico.
 	"quemadura": 0.1, # el fuego carboniza el cuerpo: casi no vale nada.
 }
+
+## Prisioneros vivos (H6, brief 2.2): "valen 2-3x un cadaver normal". Se
+## aplica sobre valor_base directamente en player.gd submit_vender(), SIN
+## pasar por Comprador.calcular_precio ni por MULTIPLICADOR_TIPO_DANO -- un
+## prisionero vivo no tiene estado_conservacion (no esta desfigurado, esta
+## vivo) y lo compran los 4 compradores por igual: modelar 4 formulas nuevas
+## solo para el caso "vivo" es complejidad que este vertical slice no
+## necesita. 2.5 = punto medio del rango que pide el brief.
+const MULTIPLICADOR_PRISIONERO := 2.5
