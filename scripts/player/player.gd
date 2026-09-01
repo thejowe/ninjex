@@ -2194,6 +2194,15 @@ func submit_vender() -> void:
 	if comprador == null:
 		confirm_casino_mensaje.rpc("No hay ningun comprador cerca")
 		return
+	# Maquina expendedora de cadaveres (quinto comprador): usos COMPARTIDOS
+	# de grupo, no por jugador -- ver NetworkManager.usos_maquina_restantes.
+	# Se comprueba ANTES de calcular ningun precio: sin usos, la venta ni
+	# siquiera se intenta (mismo criterio que el resto de los avisos de esta
+	# funcion via confirm_casino_mensaje).
+	var es_maquina: bool = comprador.tipo == Comprador.Tipo.MAQUINA_EXPENDEDORA
+	if es_maquina and NetworkManager.usos_maquina_restantes <= 0:
+		confirm_casino_mensaje.rpc("La máquina expendedora no tiene usos, recarga en curso")
+		return
 	var total_precio := 0.0
 	var vendidos: Array[NodePath] = []
 	for path in carried_cadaver_paths:
@@ -2228,7 +2237,7 @@ func submit_vender() -> void:
 	# definicion elegida de "destrozado"): venderle al Carnicero cuenta,
 	# sea cual sea el estado_conservacion de cada cadaver.
 	var es_carnicero: bool = comprador.tipo == Comprador.Tipo.CARNICERO
-	confirm_vender.rpc(vendidos, nuevo_total, total_precio, recorte_usurero, nueva_deuda, es_carnicero)
+	confirm_vender.rpc(vendidos, nuevo_total, total_precio, recorte_usurero, nueva_deuda, es_carnicero, es_maquina)
 
 ## Aplica la venta igual en todos los peers: borra los cadaveres vendidos,
 ## los quita de la lista de carga y actualiza el pool compartido de dinero
@@ -2237,7 +2246,7 @@ func submit_vender() -> void:
 ## falta un RPC aparte solo para el dinero). Tambien aplica la deuda del
 ## Usurero ya decidida por el host en submit_vender().
 @rpc("any_peer", "call_local", "reliable")
-func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, nueva_deuda: float, es_carnicero: bool) -> void:
+func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado: float, recorte_usurero: float, nueva_deuda: float, es_carnicero: bool, es_maquina: bool = false) -> void:
 	# H6: se cuentan los Cadaver reales por separado de los Prisionero -- ver
 	# el uso de esta cuenta mas abajo con record_cuerpos_destrozados (un
 	# prisionero vendido vivo no es un "cadaver destrozado").
@@ -2266,6 +2275,16 @@ func confirm_vender(vendidos: Array[NodePath], nuevo_total: float, precio_ganado
 		NetworkManager.taberna_aportado_manchado[peer_id_vendedor] = NetworkManager.taberna_aportado_manchado.get(peer_id_vendedor, 0.0) + precio_ganado
 	if es_carnicero and cadaveres_vendidos > 0:
 		NetworkManager.record_cuerpos_destrozados[peer_id_vendedor] = NetworkManager.record_cuerpos_destrozados.get(peer_id_vendedor, 0) + cadaveres_vendidos
+	# Maquina expendedora: un uso compartido de grupo por esta interaccion
+	# con V (venderla de golpe cuenta 1, no por cadaver -- ver submit_vender).
+	# Mutarlo aqui directamente vale por el mismo motivo que dinero_manchado
+	# arriba: este RPC ya es call_local reliable, llega igual a todos los
+	# peers. Solo el HOST arranca el timer de recarga (mismo guard que
+	# _schedule_grab_someter usa para el suyo).
+	if es_maquina:
+		NetworkManager.usos_maquina_restantes = max(0, NetworkManager.usos_maquina_restantes - 1)
+		if NetworkManager.usos_maquina_restantes == 0 and multiplayer.is_server():
+			NetworkManager.schedule_recarga_maquina()
 	print("[Venta] +%.1f dinero manchado (total compartido: %.1f)" % [precio_ganado, nuevo_total])
 	_status_label.modulate = Color(1, 1, 1)
 	if recorte_usurero > 0.0:

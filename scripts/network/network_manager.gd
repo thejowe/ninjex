@@ -37,6 +37,28 @@ var mision_actual: String = ""
 ## Terrazas y Muelle (tabernera.gd/viejo_maestro.gd/pescador.gd) lo leen para
 ## elegir su linea de dialogo.
 var misiones_completadas: int = 0
+## Maquina expendedora de cadaveres (idea nueva del usuario, quinto
+## comprador -- ver Comprador.Tipo.MAQUINA_EXPENDEDORA): usos COMPARTIDOS
+## por todo el grupo, no por jugador, mismo motivo que mision_actual de
+## arriba. Se resetea al entrar en mision (ver confirm_iniciar_mision) y se
+## decrementa en player.gd confirm_vender cada vez que alguien vende en ella
+## (una interaccion con V = un uso, sea 1 o varios cadaveres de golpe).
+## Solo lo muta el host: la resta ocurre dentro de confirm_vender, que ya es
+## un RPC call_local reliable (mismo criterio que dinero_manchado, no hace
+## falta un RPC aparte solo para este contador); la recarga (ver
+## schedule_recarga_maquina mas abajo) SI necesita su propio RPC porque no
+## esta atada a ninguna accion de un jugador concreto.
+var usos_maquina_restantes: int = 0
+## Tope de usos_maquina_restantes de la mision activa -- la recarga nunca
+## sube por encima de este valor. Guardado aparte (no una constante) porque
+## el numero depende del bioma (ver confirm_iniciar_mision): 5 si tiene jefe
+## de zona, 3 si no.
+var usos_maquina_maximo: int = 0
+## Segundos que tarda la maquina en reponer 1 uso tras agotarse. Referencia
+## de estilo: mismo patron que Player._schedule_grab_someter (await
+## get_tree().create_timer(...).timeout en una funcion que solo arranca el
+## host, filtrado por multiplayer.is_server() en el punto de llamada).
+const RECARGA_MAQUINA_SEGUNDOS := 60.0
 ## Contenedor donde se instancia la escena de mision activa -- asignado por
 ## main.gd en _ready() (nodo "Misiones", hermano de Hub/TestRoom, colocado
 ## lejos en el mundo para que sus paredes nunca se solapen con las del Hub).
@@ -527,6 +549,13 @@ func confirm_iniciar_mision(bioma_id: String) -> void:
 	nuevos.assign(instancia.get_node("PlayerSpawns").get_children())
 	spawn_points = nuevos
 	mision_actual = bioma_id
+	# Maquina expendedora de cadaveres: 5 usos si el bioma tiene jefe de zona
+	# (hoy, los 5 biomas de MISIONES arriba todos lo tienen), 3 si en el
+	# futuro existe un bioma sin jefe/mas corto -- condicion dejada explicita
+	# a proposito aunque hoy siempre caiga en la rama de 5.
+	var tiene_jefe_zona := true # costa/bambu/peaje/cantera/ruinas: los 5 tienen jefe de zona
+	usos_maquina_maximo = 5 if tiene_jefe_zona else 3
+	usos_maquina_restantes = usos_maquina_maximo
 	_reposicionar_jugadores()
 
 ## Confirma la vuelta al Hub igual en todos los peers: libera la escena de
@@ -543,6 +572,30 @@ func confirm_volver_hub() -> void:
 	mision_actual = ""
 	misiones_completadas += 1
 	_reposicionar_jugadores()
+
+## Maquina expendedora de cadaveres: se llama SOLO desde el host (guard en
+## el punto de llamada de player.gd confirm_vender, mismo criterio que
+## Player._schedule_grab_someter) justo cuando una venta deja el contador
+## compartido a 0. Espera RECARGA_MAQUINA_SEGUNDOS y repone 1 uso, sin pasar
+## de usos_maquina_maximo. Si para entonces el grupo ya volvio al Hub
+## (mision_actual == "") no hace nada -- no hay maquina que recargar.
+## Sin underscore a proposito (a diferencia de _reposicionar_jugadores, que
+## solo se llama desde dentro de este autoload): player.gd la llama desde
+## fuera, como next_cadaver_id()/sospecha_tramo() de arriba.
+func schedule_recarga_maquina() -> void:
+	await get_tree().create_timer(RECARGA_MAQUINA_SEGUNDOS).timeout
+	if mision_actual == "":
+		return
+	usos_maquina_restantes = min(usos_maquina_restantes + 1, usos_maquina_maximo)
+	confirm_recarga_maquina.rpc(usos_maquina_restantes)
+
+## Confirma la recarga igual en todos los peers -- el host ya decidio el
+## nuevo valor en _schedule_recarga_maquina de arriba, aqui solo se replica
+## (mismo patron call_local reliable que el resto de confirm_* de este
+## autoload).
+@rpc("any_peer", "call_local", "reliable")
+func confirm_recarga_maquina(nuevo_usos: int) -> void:
+	usos_maquina_restantes = nuevo_usos
 
 ## Manda a cada jugador ya conectado al spawn_point que le toca segun su
 ## peer_id, mismo calculo que _spawn_position_for usa para jugadores nuevos

@@ -3,6 +3,7 @@
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_simple.tscn" id="1_enemy"]
 [ext_resource type="PackedScene" path="res://scenes/world/puerta_mision.tscn" id="2_puerta"]
 [ext_resource type="PackedScene" path="res://scenes/world/extraccion_mision.tscn" id="3_extraccion"]
+[ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="4_comprador"]
 
 [sub_resource type="RectangleShape2D" id="Shape_wall_h"]
 size = Vector2(1984, 32)
@@ -219,3 +220,13 @@ daño_ataque = 14.0
 
 [node name="Extraccion" parent="." instance=ExtResource("3_extraccion")]
 position = Vector2(1900, 240)
+
+[node name="Compradores" type="Node2D" parent="."]
+
+[node name="Falsificador" parent="Compradores" instance=ExtResource("4_comprador")]
+position = Vector2(1820, 380)
+tipo = 2
+
+[node name="MaquinaExpendedora" parent="Compradores" instance=ExtResource("4_comprador")]
+position = Vector2(1820, 100)
+tipo = 4

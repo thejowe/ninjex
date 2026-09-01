@@ -12,7 +12,7 @@ extends Node2D
 
 const GRUPO_COMPRADORES := "compradores"
 
-enum Tipo { BOTICARIO, CARNICERO, FALSIFICADOR, CLAN_RIVAL }
+enum Tipo { BOTICARIO, CARNICERO, FALSIFICADOR, CLAN_RIVAL, MAQUINA_EXPENDEDORA }
 
 @export var tipo: Tipo = Tipo.CARNICERO
 @export var radio_venta: float = 70.0
@@ -49,6 +49,15 @@ enum Tipo { BOTICARIO, CARNICERO, FALSIFICADOR, CLAN_RIVAL }
 ## para el clan aunque tenga la cara perfectamente reconocible.
 @export var clan_factor_firma: float = 1.4
 @export var clan_factor_anonimo: float = 0.3
+## Maquina expendedora de cadaveres (idea nueva del usuario, quinto
+## comprador de las misiones -- ver plan-desarrollo.md seccion 2): a
+## diferencia de los otros cuatro, no tiene ningun bias por tipo de daño (no
+## premia ni castiga cortante/quemadura/etc. por encima de
+## MULTIPLICADOR_TIPO_DANO) -- es puramente "comodidad": comision fija del
+## 15% sobre el precio ya ponderado por conservacion, sin favoritismo de
+## comprador. Limitada por usos compartidos de grupo (ver
+## NetworkManager.usos_maquina_restantes), no por este factor.
+@export var maquina_factor_comision: float = 0.85
 
 @onready var _visual: ColorRect = $Visual
 
@@ -63,6 +72,8 @@ func _ready() -> void:
 			_visual.color = Color(0.75, 0.65, 0.85, 1.0)
 		Tipo.CLAN_RIVAL:
 			_visual.color = Color(0.75, 0.2, 0.2, 1.0)
+		Tipo.MAQUINA_EXPENDEDORA:
+			_visual.color = Color(0.5, 0.5, 0.6, 1.0)
 		_: # CARNICERO
 			_visual.color = Color(0.55, 0.4, 0.25, 1.0)
 
@@ -88,5 +99,8 @@ func calcular_precio(estado_conservacion: String, valor_base: float) -> float:
 			var anonimo: bool = estado_conservacion == "contundente"
 			var factor_comprador: float = clan_factor_anonimo if anonimo else clan_factor_firma
 			return valor_base * mult_tipo * factor_comprador
+		Tipo.MAQUINA_EXPENDEDORA:
+			var mult_tipo: float = EconomiaCadaveres.MULTIPLICADOR_TIPO_DANO.get(estado_conservacion, 1.0)
+			return valor_base * mult_tipo * maquina_factor_comision
 		_:
 			return 0.0
