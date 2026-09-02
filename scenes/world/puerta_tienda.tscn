@@ -13,6 +13,14 @@ offset_bottom = 32.0
 mouse_filter = 2
 color = Color(0.25, 0.16, 0.1, 1)
 
+[node name="Luz" type="ColorRect" parent="."]
+offset_left = -10.0
+offset_top = -22.0
+offset_right = 10.0
+offset_bottom = -2.0
+mouse_filter = 2
+color = Color(1, 0.78, 0.35, 0.9)
+
 [node name="Label" type="Label" parent="."]
 offset_left = -60.0
 offset_top = -54.0
