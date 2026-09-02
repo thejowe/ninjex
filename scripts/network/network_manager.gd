@@ -441,15 +441,22 @@ var taberna_cancion_actual: String = ""
 var cocina_time_remaining: float = 0.0
 var cocina_damage_reduction_multiplier: float = 1.0
 
-## Almacen y Jardin de la Casa del equipo (H5 cierre): compras UNICAS y
-## PERMANENTES del grupo entero (a diferencia de forja_nivel/sastreria_tinte_indice
-## de arriba, que son Dictionary por peer_id, esto es un bool compartido --
-## no hay "quien lo compro", beneficia a todo el grupo por igual, ver
-## comentario de cabecera de casa_equipo.gd). Solo los muta el host, siempre
-## desde dentro de un RPC call_local (player.gd confirm_comprar_almacen /
-## confirm_comprar_jardin).
+## Almacen, Jardin y Palomar de la Casa del equipo (H5 cierre): compras
+## UNICAS y PERMANENTES del grupo entero (a diferencia de
+## forja_nivel/sastreria_tinte_indice de arriba, que son Dictionary por
+## peer_id, esto es un bool compartido -- no hay "quien lo compro", beneficia
+## a todo el grupo por igual, ver comentario de cabecera de casa_equipo.gd).
+## Solo los muta el host, siempre desde dentro de un RPC call_local
+## (player.gd confirm_comprar_almacen / confirm_comprar_jardin /
+## confirm_comprar_palomar).
 var casa_equipo_almacen_comprado: bool = false
 var casa_equipo_jardin_comprado: bool = false
+## Palomar (H6, reenganchado -- ver comentario de cabecera de casa_equipo.gd
+## para el porque de "compra que habilita una accion" en vez de "modificador
+## numerico"): con esto a true, player.gd submit_abandonar_mision deja
+## rechazar la mision activa desde cualquier punto, sin exigir el rango de
+## ExtraccionMision ni el jefe de zona muerto que si exige submit_volver_hub.
+var casa_equipo_palomar_comprado: bool = false
 
 ## Inicializa Steam en cuanto arranca el autoload (antes de que main.gd llegue
 ## a la pantalla de titulo/lobby, ver comentario de cabecera de main.gd) --
@@ -563,6 +570,14 @@ func confirm_comprar_almacen(nuevo_limpio: float) -> void:
 func confirm_comprar_jardin(nuevo_limpio: float) -> void:
 	dinero_limpio = nuevo_limpio
 	casa_equipo_jardin_comprado = true
+
+## Confirma la compra unica y permanente del Palomar igual en todos los
+## peers -- mismo patron que confirm_comprar_almacen/confirm_comprar_jardin
+## de arriba. Lo llama el host desde player.gd submit_comprar_palomar().
+@rpc("any_peer", "call_local", "reliable")
+func confirm_comprar_palomar(nuevo_limpio: float) -> void:
+	dinero_limpio = nuevo_limpio
+	casa_equipo_palomar_comprado = true
 
 ## Estilo elegido por cada peer en la pantalla de eleccion previa al spawn
 ## (H6, ver scripts/ui/seleccion_estilo.gd) -- guardado como el path del
@@ -1032,6 +1047,25 @@ func confirm_volver_hub() -> void:
 	spawn_points = _spawn_points_previos if not _spawn_points_previos.is_empty() else hub_spawn_points.duplicate()
 	mision_actual = ""
 	misiones_completadas += 1
+	_reposicionar_jugadores()
+
+## Confirma el abandono voluntario de la mision activa igual en todos los
+## peers -- el Palomar de la Casa del equipo (ver casa_equipo_palomar_comprado
+## y player.gd submit_abandonar_mision, unico llamador). Misma mecanica de
+## liberar la escena y restaurar spawn_points que confirm_volver_hub de
+## arriba, pero a proposito NO suma a misiones_completadas: rechazar una
+## mision no es completarla, y tampoco es un fallo que reste nada -- el
+## dinero ya ganado durante la mision (ventas al Comprador, etc.) se queda
+## como esta, igual que al volver por la extraccion normal.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_abandonar_mision() -> void:
+	if mision_actual == "":
+		return # no hay mision activa que rechazar
+	if mission_root != null:
+		for hijo in mission_root.get_children():
+			hijo.queue_free()
+	spawn_points = _spawn_points_previos if not _spawn_points_previos.is_empty() else hub_spawn_points.duplicate()
+	mision_actual = ""
 	_reposicionar_jugadores()
 
 ## Maquina expendedora de cadaveres: se llama SOLO desde el host (guard en

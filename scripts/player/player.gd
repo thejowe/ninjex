@@ -636,6 +636,10 @@ func _physics_process(delta: float) -> void:
 			_request_comprar_almacen()
 		if Input.is_action_just_pressed("casa_comprar_jardin"):
 			_request_comprar_jardin()
+		if Input.is_action_just_pressed("casa_comprar_palomar"):
+			_request_comprar_palomar()
+		if Input.is_action_just_pressed("abandonar_mision"):
+			_request_abandonar_mision()
 		if Input.is_action_just_pressed("comprar_pergamino"):
 			_request_comprar_pergamino()
 		if Input.is_action_just_pressed("elegir_mision_costa"):
@@ -814,7 +818,7 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_sastreria_in_range(HUB_RANGE) != null:
 		texto = "Pulsa R para cambiar tu tinte"
 	elif _find_nearest_casa_equipo_in_range(HUB_RANGE) != null:
-		texto = "Casa del equipo -- ; Cocina, [ Almacen, ] Jardin"
+		texto = "Casa del equipo -- ; Cocina, [ Almacen, ] Jardin, F13 Palomar"
 	elif _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE) != null:
 		var tienda_hint := _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE)
 		texto = "Pulsa 0 para comprar el pergamino de %s (%.0f fichas)" % [style_data.style_name, tienda_hint.precio_pergamino]
@@ -832,6 +836,13 @@ func _update_interaction_hint() -> void:
 			texto = "Pulsa F6 para volver a la Aldea con el botin"
 		else:
 			texto = "Aun queda el jefe de la zona -- no puedes extraer todavia"
+	elif NetworkManager.mision_actual != "" and NetworkManager.casa_equipo_palomar_comprado:
+		# Palomar (Casa del equipo): a diferencia del resto de esta funcion,
+		# este aviso NO depende de la proximidad a ningun punto -- el Palomar
+		# deja rechazar la mision desde cualquier sitio, por eso el hint
+		# tambien aparece en cualquier sitio (solo si nada mas prioritario ya
+		# ocupo el aviso este frame, ver orden del elif de arriba).
+		texto = "Pulsa F14 para rechazar la mision y volver a la Aldea (Palomar)"
 	_interaction_label.text = texto
 
 func _handle_combo_timer(delta: float) -> void:
@@ -3324,6 +3335,9 @@ func confirm_comprar_pergamino(estilo_key: String, nuevas_fichas: float) -> void
 # aplicacion real (instanciar/liberar la escena de mision) vive en
 # NetworkManager porque afecta a TODOS los peers a la vez, no a un unico
 # personaje -- mismo criterio que confirm_brindis/confirm_cocina de arriba.
+# F14 (submit_abandonar_mision, mas abajo) es la salida de emergencia del
+# Palomar (Casa del equipo): a diferencia de F6, no exige rango de
+# extraccion ni jefe muerto -- ver casa_equipo.gd para el porque.
 # =========================================================================
 
 func _request_elegir_mision(bioma_id: String) -> void:
@@ -3359,6 +3373,28 @@ func submit_volver_hub() -> void:
 	if not get_tree().get_nodes_in_group(GRUPO_JEFE_MISION).is_empty():
 		return # el jefe de la zona sigue vivo, no se puede extraer todavia
 	NetworkManager.confirm_volver_hub.rpc()
+
+func _request_abandonar_mision() -> void:
+	submit_abandonar_mision.rpc_id(1)
+
+## Palomar (Casa del equipo, brief 2.4): a diferencia de submit_volver_hub de
+## arriba, esto NO exige estar en el rango de ExtraccionMision ni que el jefe
+## de zona este muerto -- es justo lo que el Palomar habilita (ver comentario
+## de cabecera de casa_equipo.gd para el punto de diseno verificado). Solo
+## exige que el grupo ya haya comprado el Palomar y que haya una mision
+## activa de la que salir.
+@rpc("any_peer", "call_local", "reliable")
+func submit_abandonar_mision() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if NetworkManager.mision_actual == "":
+		return # no hay mision activa que rechazar
+	if not NetworkManager.casa_equipo_palomar_comprado:
+		return # sin Palomar, no existe la accion de rechazar una mision
+	NetworkManager.confirm_abandonar_mision.rpc()
+	confirm_casino_mensaje.rpc("Palomar: mision rechazada, todo el grupo vuelve a la Aldea")
 
 # =========================================================================
 # Interiores de tienda del Hub (scope nuevo H5+, ver plan-desarrollo.md
@@ -3406,12 +3442,14 @@ func submit_salir_tienda() -> void:
 	NetworkManager.confirm_salir_tienda.rpc()
 
 # =========================================================================
-# Casa del equipo (H5 cierre, Terrazas) -- ; Cocina, [ Almacen, ] Jardin.
-# A diferencia de Forja/Herboristeria/Sastreria (gasto compartido, resultado
-# individual), aqui el resultado TAMBIEN es de grupo -- mismo criterio que
-# la Taberna. Ver comentario de cabecera de casa_equipo.gd para el porque de
-# cada adaptacion (Cocina repetible vs. Almacen/Jardin compra unica, y el
-# bloqueo documentado del Palomar).
+# Casa del equipo (H5 cierre, Terrazas) -- ; Cocina, [ Almacen, ] Jardin,
+# F13 Palomar. A diferencia de Forja/Herboristeria/Sastreria (gasto
+# compartido, resultado individual), aqui el resultado TAMBIEN es de grupo --
+# mismo criterio que la Taberna. Ver comentario de cabecera de casa_equipo.gd
+# para el porque de cada adaptacion (Cocina repetible vs. Almacen/Jardin/
+# Palomar compra unica). La accion que el Palomar habilita de verdad
+# (rechazar una mision en marcha) vive en submit_abandonar_mision, en la
+# seccion de Misiones de mas arriba -- aqui solo esta la compra.
 # =========================================================================
 
 func _request_comprar_cocina() -> void:
@@ -3484,10 +3522,31 @@ func submit_comprar_jardin() -> void:
 	NetworkManager.confirm_comprar_jardin.rpc(nuevo_limpio)
 	confirm_casino_mensaje.rpc("Jardin comprado: -%.0f%% en los precios de la Herboristeria" % [CasaEquipo.JARDIN_DESCUENTO_HERBORISTERIA * 100.0])
 
-# Palomar (brief 2.4: "permite rechazar una mision sin penalizacion"): BLOQUEADO.
-# El vertical slice no tiene sistema de misiones/tablon todavia (confirmado,
-# ningun archivo lo menciona) -- "rechazar una mision" no tiene nada que
-# hacer de verdad sin ese sistema. Implementarlo es tarea propia de cuando
-# exista el tablon de misiones real, fuera del alcance de esta tanda. Mismo
-# criterio de documentar un bloqueo que usa cartas_selladas.gd para la
-# trampa de Sellos. No se anade tecla ni estado para esto.
+func _request_comprar_palomar() -> void:
+	submit_comprar_palomar.rpc_id(1)
+
+## Palomar (brief 2.4: "permite rechazar una mision sin penalizacion").
+## Compra unica y permanente, mismo criterio que Almacen/Jardin de arriba --
+## ver comentario de cabecera de casa_equipo.gd para el punto de diseno
+## verificado (hoy no hay penalizacion que quitar porque no hay forma de
+## rechazar una mision en absoluto; el Palomar es lo que habilita esa accion,
+## ver submit_abandonar_mision en la seccion de Misiones, mas arriba).
+@rpc("any_peer", "call_local", "reliable")
+func submit_comprar_palomar() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	var casa := _find_nearest_casa_equipo_in_range(HUB_RANGE)
+	if casa == null:
+		confirm_casino_mensaje.rpc("No hay ninguna casa del equipo cerca")
+		return
+	if NetworkManager.casa_equipo_palomar_comprado:
+		confirm_casino_mensaje.rpc("El Palomar ya esta comprado")
+		return
+	if NetworkManager.dinero_limpio < casa.precio_palomar:
+		confirm_casino_mensaje.rpc("Necesitas %.0f de dinero limpio para el Palomar" % casa.precio_palomar)
+		return
+	var nuevo_limpio: float = NetworkManager.dinero_limpio - casa.precio_palomar
+	NetworkManager.confirm_comprar_palomar.rpc(nuevo_limpio)
+	confirm_casino_mensaje.rpc("Palomar comprado: el grupo ya puede rechazar una mision en marcha con F14")

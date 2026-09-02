@@ -29,13 +29,27 @@ extends Node2D
 ##   solo a quien pago"). Estado en NetworkManager.casa_equipo_almacen_comprado
 ##   (bool compartido, no Dictionary por peer -- es del grupo entero).
 ##
-## - Palomar: "permite rechazar una mision sin penalizacion". BLOQUEADA: el
-##   vertical slice no tiene sistema de misiones/tablon todavia (confirmado,
-##   ningun archivo lo menciona), asi que "rechazar una mision" no tiene nada
-##   que hacer de verdad. Mismo criterio de documentar un bloqueo que usa
-##   cartas_selladas.gd para la trampa de Sellos: no se anade tecla ni
-##   estado para esto, se deja explicito aqui para cuando exista el tablon
-##   de misiones real.
+## - Palomar: "permite rechazar una mision sin penalizacion". REENGANCHADA
+##   (H6, el tablon de misiones ya existe -- ver tablon_misiones.gd). Punto de
+##   diseno verificado antes de tocar nada: hoy NO existe ninguna penalizacion
+##   por abandonar una mision -- lo que no existe es la posibilidad misma de
+##   abandonarla. submit_volver_hub (ver player.gd) es la UNICA forma de
+##   volver al Hub desde una mision, y exige dos cosas a la vez: estar en el
+##   rango del punto de ExtraccionMision Y que el jefe de zona este muerto
+##   (GRUPO_JEFE_MISION vacio). Sin ambas, el grupo esta atrapado hasta
+##   terminar la mision -- no hay "rechazar" de ningun tipo, con o sin coste.
+##   Por tanto el Palomar no quita una penalizacion (no hay nada que quitar):
+##   HABILITA la accion de abandonar una mision en marcha, desde cualquier
+##   punto de la mision, sin exigir ni el rango de extraccion ni el jefe
+##   muerto (ver player.gd submit_abandonar_mision / tecla F14). "Sin
+##   penalizacion" se traduce en que NetworkManager.misiones_completadas NO
+##   sube al usar el Palomar (rechazar no es completar), pero tampoco resta
+##   nada ni descuenta dinero -- el dinero manchado/limpio ya ganado durante
+##   la mision se queda como esta, igual que al volver por la extraccion
+##   normal (ver confirm_abandonar_mision, hermano de confirm_volver_hub).
+##   Compra UNICA y permanente para el grupo, sale del pool COMPARTIDO --
+##   mismo patron que Almacen/Jardin (bool en
+##   NetworkManager.casa_equipo_palomar_comprado).
 ##
 ## - Jardin: "cultiva reactivos para la herboristeria". Un sistema de cultivo
 ##   con tiempo real (plantar, esperar, cosechar) es sobreconstruir para este
@@ -73,6 +87,13 @@ const ALMACEN_BONUS_CADAVERES := 2
 ## Jardin: compra unica, permanente, sale del pool COMPARTIDO.
 @export var precio_jardin: float = 180.0
 const JARDIN_DESCUENTO_HERBORISTERIA := 0.15
+
+## Palomar: compra unica, permanente, sale del pool COMPARTIDO. Precio mas
+## alto que el resto de esta tienda (mas que Almacen/Jardin, comparable al
+## nivel 2 de Forja) porque no es un numero que suma sobre una base -- es una
+## salida de emergencia disponible para todo el grupo en cualquier mision,
+## en cualquier momento, sin condiciones (ver comentario de cabecera).
+@export var precio_palomar: float = 220.0
 
 @onready var _visual: ColorRect = $Visual
 
