@@ -23,7 +23,7 @@ size = Vector2(32, 480)
 ## Recorte deliberado (mismo criterio que el resto de este scope): NO se
 ## trae aqui al Viejo Maestro/Usurero/Pescador aunque plan-assets.md los
 ## liste como "NPCs fijos" de la taberna -- esos tres viven en otros puntos
-## del Hub por decisiones de otros agentes (Terrazas/Casino en test_room/
+## del Hub por decisiones de otros agentes (Terrazas/interior del Casino/
 ## Muelle respectivamente) y moverlos es fuera de alcance de esta tarea
 ## (transicion + interior), no una omision.
 

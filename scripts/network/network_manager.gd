@@ -153,13 +153,12 @@ const MISIONES: Dictionary = {
 }
 
 ## Interiores de tienda del Hub (scope nuevo H5+, ver plan-assets.md seccion
-## 8 "Interiores de tienda" y plan-desarrollo.md seccion 2): mismo patron que
-## MISIONES de arriba -- Dictionary tienda_id -> PackedScene, instanciada bajo
-## interior_root al entrar (ver confirm_entrar_tienda), liberada al volver
-## (ver confirm_salir_tienda). El Casino se queda FUERA a proposito: sigue
-## viviendo en test_room, no en el Hub -- moverlo es trabajo compartido con
-## casino-agent, ver la nota en plan-desarrollo.md seccion 2 antes de
-## anadirlo aqui.
+## 8 "Interiores de tienda" y plan-desarrollo.md seccion 2): Dictionary
+## tienda_id -> PackedScene, instanciada bajo interior_root al entrar (ver
+## confirm_entrar_tienda), liberada al volver (ver confirm_salir_tienda).
+## El Casino (casino-agent) ya vive aqui igual que el resto -- se movio
+## desde test_room a scenes/world/interiors/casino_interior.tscn, con
+## puerta fisica en Muelle Alto (hub.tscn PuertaCasino).
 const TIENDAS_INTERIOR: Dictionary = {
 	"forja": preload("res://scenes/world/interiors/forja_interior.tscn"),
 	"herboristeria": preload("res://scenes/world/interiors/herboristeria_interior.tscn"),
@@ -167,6 +166,7 @@ const TIENDAS_INTERIOR: Dictionary = {
 	"sastreria": preload("res://scenes/world/interiors/sastreria_interior.tscn"),
 	"casa_equipo": preload("res://scenes/world/interiors/casa_equipo_interior.tscn"),
 	"taberna": preload("res://scenes/world/interiors/taberna_interior.tscn"),
+	"casino": preload("res://scenes/world/interiors/casino_interior.tscn"),
 }
 
 ## Id de la tienda cuyo interior esta activo ahora mismo, o "" si el grupo

@@ -1,0 +1,233 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/economy/cambista.tscn" id="1_cambista"]
+[ext_resource type="PackedScene" path="res://scenes/economy/mesa_dados.tscn" id="2_mesa_dados"]
+[ext_resource type="PackedScene" path="res://scenes/economy/usurero.tscn" id="3_usurero"]
+[ext_resource type="PackedScene" path="res://scenes/economy/ruleta.tscn" id="4_ruleta"]
+[ext_resource type="PackedScene" path="res://scenes/economy/cartas_selladas.tscn" id="5_cartas_selladas"]
+[ext_resource type="PackedScene" path="res://scenes/economy/peleas_sotano.tscn" id="6_peleas_sotano"]
+[ext_resource type="PackedScene" path="res://scenes/economy/tienda_pergaminos.tscn" id="7_tienda_pergaminos"]
+[ext_resource type="PackedScene" path="res://scenes/world/salida_tienda.tscn" id="8_salida"]
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_h"]
+size = Vector2(960, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_v"]
+size = Vector2(32, 720)
+
+[node name="CasinoInterior" type="Node2D"]
+## Interior del Casino (scope nuevo H5+, ver plan-assets.md seccion 8): mood
+## tenebroso y siniestro, el opuesto deliberado a la Taberna -- rojos vino y
+## purpuras muy oscuros sobre negro, acentos de dorado sucio, focos duros y
+## localizados solo sobre las mesas de juego (Rueda del Clan, Cartas
+## Selladas, Mesa de Dados, Peleas del Sotano), el resto de la sala en
+## penumbra casi opresiva (Cambista/Usurero/Tienda de Pergaminos no llevan
+## foco), humo ambiental. Mueve aqui las 7 sub-escenas de Casino que vivian
+## sueltas en test_room (ver git history) -- mismo criterio que el resto de
+## interiores: la mecanica vive dentro, la fachada del Hub (Muelle Alto)
+## solo tiene la puerta (ver hub.tscn PuertaCasino).
+
+[node name="Floor" type="ColorRect" parent="."]
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 960.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.09, 0.03, 0.05, 1)
+
+[node name="SombraGeneral" type="ColorRect" parent="."]
+## Penumbra opresiva de base -- igual patron que el Mercado Negro, pero mas
+## oscura todavia (este es el interior mas tenebroso del hub).
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 960.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.3)
+
+[node name="HumoAmbiental" type="ColorRect" parent="."]
+## Capa de humo ambiental, translucida y uniforme sobre toda la sala.
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 960.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.5, 0.5, 0.55, 0.05)
+
+[node name="FocoRuleta" type="ColorRect" parent="."]
+## Foco duro sobre la mesa de la Rueda del Clan.
+offset_left = 130.0
+offset_top = 110.0
+offset_right = 230.0
+offset_bottom = 210.0
+mouse_filter = 2
+color = Color(0.85, 0.7, 0.25, 0.25)
+
+[node name="FocoCartas" type="ColorRect" parent="."]
+## Foco duro sobre la mesa de Cartas Selladas.
+offset_left = 430.0
+offset_top = 110.0
+offset_right = 530.0
+offset_bottom = 210.0
+mouse_filter = 2
+color = Color(0.85, 0.7, 0.25, 0.25)
+
+[node name="FocoPeleas" type="ColorRect" parent="."]
+## Foco duro sobre la arena de las Peleas del Sotano.
+offset_left = 730.0
+offset_top = 110.0
+offset_right = 830.0
+offset_bottom = 210.0
+mouse_filter = 2
+color = Color(0.85, 0.7, 0.25, 0.25)
+
+[node name="FocoDados" type="ColorRect" parent="."]
+## Foco duro sobre la Mesa de Dados.
+offset_left = 130.0
+offset_top = 330.0
+offset_right = 230.0
+offset_bottom = 430.0
+mouse_filter = 2
+color = Color(0.85, 0.7, 0.25, 0.25)
+
+[node name="WallTop" type="StaticBody2D" parent="."]
+position = Vector2(480, 16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallTop"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallTop"]
+offset_left = -480.0
+offset_top = -16.0
+offset_right = 480.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.16, 0.03, 0.07, 1)
+
+[node name="WallBottom" type="StaticBody2D" parent="."]
+position = Vector2(480, 704)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallBottom"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallBottom"]
+offset_left = -480.0
+offset_top = -16.0
+offset_right = 480.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.16, 0.03, 0.07, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="."]
+position = Vector2(16, 360)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallLeft"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallLeft"]
+offset_left = -16.0
+offset_top = -360.0
+offset_right = 16.0
+offset_bottom = 360.0
+mouse_filter = 2
+color = Color(0.16, 0.03, 0.07, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="."]
+position = Vector2(944, 360)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallRight"]
+offset_left = -16.0
+offset_top = -360.0
+offset_right = 16.0
+offset_bottom = 360.0
+mouse_filter = 2
+color = Color(0.16, 0.03, 0.07, 1)
+
+[node name="MesaFieltroRuleta" type="ColorRect" parent="."]
+## Prop placeholder (mesa de fieltro desgastado), 100x70, bajo la Rueda del
+## Clan.
+offset_left = 130.0
+offset_top = 125.0
+offset_right = 230.0
+offset_bottom = 195.0
+mouse_filter = 2
+color = Color(0.3, 0.05, 0.08, 1)
+
+[node name="MesaFieltroCartas" type="ColorRect" parent="."]
+offset_left = 430.0
+offset_top = 125.0
+offset_right = 530.0
+offset_bottom = 195.0
+mouse_filter = 2
+color = Color(0.3, 0.05, 0.08, 1)
+
+[node name="MesaFieltroDados" type="ColorRect" parent="."]
+offset_left = 130.0
+offset_top = 345.0
+offset_right = 230.0
+offset_bottom = 415.0
+mouse_filter = 2
+color = Color(0.3, 0.05, 0.08, 1)
+
+[node name="CortinaSalaPrivada" type="ColorRect" parent="."]
+## Prop placeholder (cortina pesada de la sala privada), 24x110, junto a las
+## Peleas del Sotano.
+offset_left = 700.0
+offset_top = 105.0
+offset_right = 724.0
+offset_bottom = 215.0
+mouse_filter = 2
+color = Color(0.22, 0.04, 0.1, 1)
+
+[node name="FichasDispersas" type="ColorRect" parent="."]
+## Prop placeholder (fichas y monedas desperdigadas), 40x16, junto al
+## Cambista.
+offset_left = 210.0
+offset_top = 615.0
+offset_right = 250.0
+offset_bottom = 631.0
+mouse_filter = 2
+color = Color(0.55, 0.45, 0.1, 1)
+
+[node name="Ruleta" parent="." instance=ExtResource("4_ruleta")]
+position = Vector2(180, 160)
+
+[node name="CartasSelladas" parent="." instance=ExtResource("5_cartas_selladas")]
+position = Vector2(480, 160)
+
+[node name="PeleasSotano" parent="." instance=ExtResource("6_peleas_sotano")]
+position = Vector2(780, 160)
+
+[node name="MesaDados" parent="." instance=ExtResource("2_mesa_dados")]
+position = Vector2(180, 380)
+
+[node name="Usurero" parent="." instance=ExtResource("3_usurero")]
+position = Vector2(780, 380)
+
+[node name="Cambista" parent="." instance=ExtResource("1_cambista")]
+position = Vector2(180, 600)
+
+[node name="TiendaPergaminos" parent="." instance=ExtResource("7_tienda_pergaminos")]
+## Esquina mas discreta de la sala (plan-assets.md seccion 8), sin foco
+## duro, pegada a la esquina inferior derecha.
+position = Vector2(860, 630)
+
+[node name="PlayerSpawns" type="Node2D" parent="."]
+
+[node name="PlayerSpawn1" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(432, 640)
+
+[node name="PlayerSpawn2" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(528, 640)
+
+[node name="PlayerSpawn3" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(384, 660)
+
+[node name="PlayerSpawn4" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(576, 660)
+
+[node name="Salida" parent="." instance=ExtResource("8_salida")]
+position = Vector2(480, 660)

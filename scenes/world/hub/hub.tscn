@@ -460,6 +460,11 @@ offset_bottom = 384.0
 mouse_filter = 2
 color = Color(0.3, 0.28, 0.35, 1)
 
+[node name="PuertaCasino" parent="MuelleAlto" instance=ExtResource("10_puerta_tienda")]
+position = Vector2(1962, -1950)
+tienda_id = "casino"
+nombre_visible = "Casino"
+
 [node name="Escalera3" type="Node2D" parent="."]
 
 [node name="Floor" type="ColorRect" parent="Escalera3"]

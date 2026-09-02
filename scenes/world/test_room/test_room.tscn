@@ -1,15 +1,8 @@
-[gd_scene load_steps=11 format=3 uid="uid://bqx7h2r5w1n0k"]
+[gd_scene load_steps=7 format=3 uid="uid://bqx7h2r5w1n0k"]
 
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_simple.tscn" id="1_enemy"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/mob_murcielago.tscn" id="1b_mob_murcielago"]
 [ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="2_comprador"]
-[ext_resource type="PackedScene" path="res://scenes/economy/cambista.tscn" id="3_cambista"]
-[ext_resource type="PackedScene" path="res://scenes/economy/mesa_dados.tscn" id="4_mesa_dados"]
-[ext_resource type="PackedScene" path="res://scenes/economy/usurero.tscn" id="5_usurero"]
-[ext_resource type="PackedScene" path="res://scenes/economy/ruleta.tscn" id="6_ruleta"]
-[ext_resource type="PackedScene" path="res://scenes/economy/cartas_selladas.tscn" id="7_cartas_selladas"]
-[ext_resource type="PackedScene" path="res://scenes/economy/peleas_sotano.tscn" id="8_peleas_sotano"]
-[ext_resource type="PackedScene" path="res://scenes/economy/tienda_pergaminos.tscn" id="9_tienda_pergaminos"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1024, 32)
@@ -136,26 +129,3 @@ tipo = 0
 [node name="Carnicero" parent="Compradores" instance=ExtResource("2_comprador")]
 position = Vector2(900, 120)
 tipo = 1
-
-[node name="Casino" type="Node2D" parent="."]
-
-[node name="Cambista" parent="Casino" instance=ExtResource("3_cambista")]
-position = Vector2(120, 650)
-
-[node name="MesaDados" parent="Casino" instance=ExtResource("4_mesa_dados")]
-position = Vector2(900, 650)
-
-[node name="Usurero" parent="Casino" instance=ExtResource("5_usurero")]
-position = Vector2(512, 650)
-
-[node name="Ruleta" parent="Casino" instance=ExtResource("6_ruleta")]
-position = Vector2(120, 480)
-
-[node name="CartasSelladas" parent="Casino" instance=ExtResource("7_cartas_selladas")]
-position = Vector2(512, 480)
-
-[node name="PeleasSotano" parent="Casino" instance=ExtResource("8_peleas_sotano")]
-position = Vector2(900, 480)
-
-[node name="TiendaPergaminos" parent="Casino" instance=ExtResource("9_tienda_pergaminos")]
-position = Vector2(700, 650)
