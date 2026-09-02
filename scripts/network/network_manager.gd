@@ -64,6 +64,22 @@ signal lobby_ready(is_host: bool)
 ## dejar reintentar en vez de quedarse colgado en "Conectando...".
 signal lobby_join_failed(reason: String)
 
+## Emitida SOLO en un cliente (nunca en el host, ver comentario de
+## _on_server_disconnected mas abajo) cuando se pierde la conexion con el
+## host a media partida -- pase de dureza (hardening) de netcode-agent:
+## hasta ahora NADA en el proyecto escuchaba multiplayer.server_disconnected
+## fuera del lobby (lobby.gd solo reacciona a peer_disconnected de OTROS
+## peers mientras esta en PanelSala, y deja de escuchar nada en cuanto
+## empieza la partida, ver _teardown_lobby_signals). Si el host cerraba el
+## juego o perdia la conexion mientras un cliente estaba dentro de una
+## mision o un interior de tienda, ese cliente se quedaba congelado sin
+## ningun aviso ni forma de volver al menu -- el propio MultiplayerAPI ya no
+## tiene servidor al que mandar mas RPCs, asi que cualquier submit_ que
+## intentara despues simplemente no iria a ningun sitio. main.gd escucha
+## esta señal para desconectar limpio y recargar la escena de vuelta al
+## menu de inicio (ver _on_host_disconnected en main.gd).
+signal host_disconnected
+
 ## Id de lobby recibido via Steam.join_requested (el jugador acepta una
 ## invitacion de Steam, o pulsa "Unirse a la partida" en la lista de amigos,
 ## MIENTRAS el juego ya esta corriendo) -- solo se guarda si todavia no
@@ -700,9 +716,29 @@ func _connect_peer_signals() -> void:
 		multiplayer.peer_connected.connect(_on_peer_connected)
 	if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
 		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	# Pase de dureza (hardening): ver comentario de host_disconnected arriba.
+	# server_disconnected es la señal correcta para detectar "se rompio mi
+	# conexion con el host" -- a diferencia de peer_disconnected (que solo
+	# esta garantizado cuando un peer normal se va, ver doc de Godot),
+	# server_disconnected SIEMPRE dispara en cada cliente cuando el peer 1
+	# desaparece, sea porque cerro el juego, crasheo o perdio la red. Nunca
+	# dispara en el propio host (un servidor no se desconecta de si mismo),
+	# asi que no hace falta filtrar por is_server() en el handler.
+	if not multiplayer.server_disconnected.is_connected(_on_server_disconnected):
+		multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 func _on_peer_connected(_id: int) -> void:
 	pass # el spawn ya no depende de la conexion, ver submit_style_choice.
+
+## Ver comentario de host_disconnected arriba. disconnect_game() ya deja
+## multiplayer_peer en OfflineMultiplayerPeer y limpia steam_lobby_id/
+## style_choice -- mismo estado que si el jugador hubiera pulsado "Salir de
+## la sala" a mano. main.gd es quien decide que hacer con la señal
+## (recargar la escena y volver al menu), este autoload solo detecta la
+## caida y deja el estado de red limpio antes de avisar.
+func _on_server_disconnected() -> void:
+	disconnect_game()
+	host_disconnected.emit()
 
 func _on_peer_disconnected(id: int) -> void:
 	style_choice.erase(id)
@@ -767,6 +803,80 @@ func submit_style_choice(style_path: String) -> void:
 	# explicito. Ver confirm_style_choice mas abajo para el detalle de por que
 	# hace falta y como se resuelve el riesgo de orden de llegada.
 	confirm_style_choice.rpc(sender_id, style_path)
+	# Pase de dureza (hardening) de netcode-agent: sender_id puede ser un peer
+	# que se une a una partida YA EN MARCHA (tercer/cuarto jugador entrando
+	# tarde) o que se RECONECTA mientras el resto del grupo sigue dentro de
+	# una mision o un interior de tienda -- ver _sync_new_peer() mas abajo
+	# para el porque hace falta esto ademas del RPC de arriba.
+	_sync_new_peer(sender_id)
+
+## Ver comentario de la llamada en submit_style_choice de arriba. Todo el
+## estado que mission_root/interior_root llevan puesto (y los estilos de
+## los jugadores que ya estaban conectados) viajo en su momento por RPCs
+## PUNTUALES (confirm_iniciar_mision/confirm_entrar_tienda/confirm_style_choice),
+## que solo alcanzan a los peers conectados EN ESE INSTANTE -- un peer que
+## se une despues (o se reconecta tras perder la conexion) nunca los recibe.
+## Sin esto, ese peer aparece con el estilo por defecto puesto en los
+## jugadores que ya estaban ahi, y si el grupo esta dentro de una mision o
+## de un interior de tienda, su copia local de mission_root/interior_root se
+## queda vacia -- el host SI lo posiciona bien (_spawn_player usa el
+## spawn_points ya vigente), pero ese peer ve un mundo sin paredes ni
+## mesas, flotando en el sitio correcto de un escenario que no existe en su
+## pantalla. Se manda SOLO al peer nuevo (rpc_id), nunca al grupo entero
+## (.rpc()) -- los demas ya estan al dia, repetirselo seria inofensivo pero
+## inutil.
+func _sync_new_peer(peer_id: int) -> void:
+	if peer_id == multiplayer.get_unique_id():
+		return # el propio host nunca necesita resincronizarse consigo mismo
+	for otro_id in style_choice:
+		if otro_id == peer_id:
+			continue # su propio estilo ya viaja en el confirm_style_choice.rpc() de submit_style_choice
+		confirm_style_choice.rpc_id(peer_id, otro_id, style_choice[otro_id])
+	if mision_actual != "":
+		confirm_sync_mision_a_peer.rpc_id(peer_id, mision_actual)
+	elif interior_actual != "":
+		confirm_sync_interior_a_peer.rpc_id(peer_id, interior_actual)
+
+## Aplica el estado de la mision activa SOLO en el peer nuevo (ver
+## _sync_new_peer arriba) -- instancia la escena del bioma bajo mission_root
+## exactamente igual que confirm_iniciar_mision, pero sin volver a tocar
+## mision_actual/usos_maquina_* (ya estan bien en todos los peers que ya
+## estaban conectados) ni disparar el reposicionamiento del grupo (el peer
+## nuevo todavia no tiene jugador spawneado en su arbol cuando esto llega
+## en el peor orden posible, y el que si tiene ya lo coloco _spawn_player).
+## Idempotente via el guard de mission_root.get_child_count(): en el HOST
+## (que recibe esta misma llamada por call_local al usar rpc_id) la escena
+## real ya esta montada, asi que aqui no hace nada.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_sync_mision_a_peer(bioma_id: String) -> void:
+	if mission_root == null or mission_root.get_child_count() > 0:
+		return
+	if not MISIONES.has(bioma_id):
+		return
+	var instancia: Node = MISIONES[bioma_id].instantiate()
+	mission_root.add_child(instancia)
+	var nuevos: Array[Node2D] = []
+	nuevos.assign(instancia.get_node("PlayerSpawns").get_children())
+	spawn_points = nuevos
+	mision_actual = bioma_id
+
+## Aplica el estado del interior de tienda activo SOLO en el peer nuevo --
+## mismo criterio que confirm_sync_mision_a_peer de arriba, version interior
+## (ver confirm_entrar_tienda mas abajo para el equivalente que SI reposiciona
+## al grupo entero, usado cuando alguien entra de verdad, no al sincronizar
+## a un recien llegado).
+@rpc("any_peer", "call_local", "reliable")
+func confirm_sync_interior_a_peer(tienda_id: String) -> void:
+	if interior_root == null or interior_root.get_child_count() > 0:
+		return
+	if not TIENDAS_INTERIOR.has(tienda_id):
+		return
+	var instancia: Node = TIENDAS_INTERIOR[tienda_id].instantiate()
+	interior_root.add_child(instancia)
+	var nuevos: Array[Node2D] = []
+	nuevos.assign(instancia.get_node("PlayerSpawns").get_children())
+	spawn_points = nuevos
+	interior_actual = tienda_id
 
 func _spawn_player(id: int, style_path: String = "") -> void:
 	if players_root == null:
@@ -881,6 +991,13 @@ func _spawn_position_for(id: int) -> Vector2:
 func confirm_iniciar_mision(bioma_id: String) -> void:
 	if mision_actual != "":
 		return # ya hay una mision activa, ignorar peticion duplicada
+	if interior_actual != "":
+		return # dentro de un interior de tienda -- pase de dureza: submit_elegir_mision
+		# ya comprueba esto antes de llamar aqui, pero confirm_entrar_tienda SI
+		# re-comprueba las dos condiciones de forma defensiva (ver mas abajo) y
+		# esta funcion se habia quedado asimetrica solo comprobando mision_actual;
+		# se iguala el criterio por si en el futuro algo mas (aparte de
+		# submit_elegir_mision) llega a llamar a este confirm_ directamente.
 	if not MISIONES.has(bioma_id):
 		return
 	if mission_root == null:

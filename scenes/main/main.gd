@@ -32,6 +32,20 @@ const PROLOGO_SCENE := preload("res://scenes/ui/prologo.tscn")
 const SELECCION_ESTILO_SCENE := preload("res://scenes/ui/seleccion_estilo.tscn")
 
 func _ready() -> void:
+	# Pase de dureza (hardening) de netcode-agent: si el host cierra el
+	# juego o pierde la conexion a media partida, NetworkManager detecta la
+	# caida via multiplayer.server_disconnected (ver
+	# NetworkManager._on_server_disconnected) y ya deja el estado de red
+	# limpio (disconnect_game()) antes de avisar -- aqui solo se reacciona
+	# recargando esta escena entera para volver al menu de inicio en vez de
+	# quedarse congelado sin ningun aviso (que es lo que pasaba antes: nada
+	# en el proyecto escuchaba esta señal fuera del lobby). Conectada una
+	# sola vez para toda la vida del proceso, no solo durante el lobby, a
+	# proposito -- antes se podia perder la conexion en CUALQUIER momento
+	# de la partida (p.ej. con un cliente dentro de un interior de tienda),
+	# no solo mientras se estaba en pantalla de lobby.
+	if not NetworkManager.host_disconnected.is_connected(_on_host_disconnected):
+		NetworkManager.host_disconnected.connect(_on_host_disconnected)
 	NetworkManager.players_root = $Players
 	NetworkManager.effects_root = $Effects
 	NetworkManager.cadavers_root = $Cadavers
@@ -128,3 +142,19 @@ func _client_lobby_id_from_args() -> int:
 
 func _server_flag_from_args() -> bool:
 	return OS.get_cmdline_user_args().has("--server")
+
+## Ver comentario de _ready() de arriba. NetworkManager.disconnect_game() ya
+## se llamo antes de que esta señal llegara (dentro de
+## _on_server_disconnected), asi que aqui solo hace falta reconstruir la
+## escena desde cero -- reload_current_scene() vuelve a correr _ready(),
+## que cae en _run_menu_flow() (titulo -> lobby) como si el proceso
+## acabara de arrancar, exactamente igual que si el jugador hubiera
+## pulsado "Salir de la sala" a mano. OJO atajo de test --client=<id>: si
+## este proceso se lanzo con ese flag, _ready() intentara reconectar al
+## mismo lobby otra vez tras el reload en vez de caer al menu -- aceptable
+## para el atajo de terminal (no es el flujo real de un jugador), no se
+## resuelve aqui para no complicar este fix con un caso que solo afecta a
+## pruebas de desarrollador.
+func _on_host_disconnected() -> void:
+	push_warning("main.gd: se perdio la conexion con el host, volviendo al menu de inicio.")
+	get_tree().reload_current_scene()
