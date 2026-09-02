@@ -1,6 +1,7 @@
-[gd_scene load_steps=10 format=3 uid="uid://bqx7h2r5w1n0k"]
+[gd_scene load_steps=11 format=3 uid="uid://bqx7h2r5w1n0k"]
 
 [ext_resource type="PackedScene" path="res://scenes/enemies/enemy_simple.tscn" id="1_enemy"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/mob_murcielago.tscn" id="1b_mob_murcielago"]
 [ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="2_comprador"]
 [ext_resource type="PackedScene" path="res://scenes/economy/cambista.tscn" id="3_cambista"]
 [ext_resource type="PackedScene" path="res://scenes/economy/mesa_dados.tscn" id="4_mesa_dados"]
@@ -122,6 +123,9 @@ position = Vector2(400, 200)
 
 [node name="Enemy2" parent="Enemies" instance=ExtResource("1_enemy")]
 position = Vector2(624, 568)
+
+[node name="MobMurcielago1" parent="Enemies" instance=ExtResource("1b_mob_murcielago")]
+position = Vector2(512, 130)
 
 [node name="Compradores" type="Node2D" parent="."]
 

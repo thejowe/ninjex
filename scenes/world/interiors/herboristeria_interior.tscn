@@ -1,0 +1,136 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/economy/herboristeria.tscn" id="1_herb"]
+[ext_resource type="PackedScene" path="res://scenes/world/salida_tienda.tscn" id="2_salida"]
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_h"]
+size = Vector2(640, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_v"]
+size = Vector2(32, 480)
+
+[node name="HerboristeriaInterior" type="Node2D"]
+## Interior de la Herboristeria (scope nuevo H5+, ver plan-assets.md seccion
+## 8): mood calmo, natural, casi medico -- verdes apagados y marrones tierra,
+## luz difusa sin sombras duras. Placeholder de color, sin arte final.
+
+[node name="Floor" type="ColorRect" parent="."]
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 640.0
+offset_bottom = 480.0
+mouse_filter = 2
+color = Color(0.22, 0.26, 0.18, 1)
+
+[node name="LuzDifusa" type="ColorRect" parent="."]
+## Luz de vela/farol tamizada por hierbas -- cubre casi toda la sala con
+## poca intensidad, a diferencia del foco puntual duro de la Forja.
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 640.0
+offset_bottom = 480.0
+mouse_filter = 2
+color = Color(0.6, 0.7, 0.4, 0.08)
+
+[node name="WallTop" type="StaticBody2D" parent="."]
+position = Vector2(320, 16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallTop"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallTop"]
+offset_left = -320.0
+offset_top = -16.0
+offset_right = 320.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.24, 0.16, 1)
+
+[node name="WallBottom" type="StaticBody2D" parent="."]
+position = Vector2(320, 464)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallBottom"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallBottom"]
+offset_left = -320.0
+offset_top = -16.0
+offset_right = 320.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.3, 0.24, 0.16, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="."]
+position = Vector2(16, 240)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallLeft"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallLeft"]
+offset_left = -16.0
+offset_top = -240.0
+offset_right = 16.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.3, 0.24, 0.16, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="."]
+position = Vector2(624, 240)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallRight"]
+offset_left = -16.0
+offset_top = -240.0
+offset_right = 16.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.3, 0.24, 0.16, 1)
+
+[node name="MesaPreparacion" type="ColorRect" parent="."]
+## Prop placeholder (mesa de preparacion), 64x32.
+offset_left = 288.0
+offset_top = 140.0
+offset_right = 352.0
+offset_bottom = 172.0
+mouse_filter = 2
+color = Color(0.45, 0.36, 0.22, 1)
+
+[node name="EstanteriaIzq" type="ColorRect" parent="."]
+## Prop placeholder (estanteria de tarros/frascos), 32x64.
+offset_left = 140.0
+offset_top = 100.0
+offset_right = 172.0
+offset_bottom = 164.0
+mouse_filter = 2
+color = Color(0.3, 0.4, 0.35, 1)
+
+[node name="EstanteriaDer" type="ColorRect" parent="."]
+## Prop placeholder simetrico al de arriba.
+offset_left = 468.0
+offset_top = 100.0
+offset_right = 500.0
+offset_bottom = 164.0
+mouse_filter = 2
+color = Color(0.3, 0.4, 0.35, 1)
+
+[node name="Herboristeria" parent="." instance=ExtResource("1_herb")]
+position = Vector2(320, 160)
+
+[node name="PlayerSpawns" type="Node2D" parent="."]
+
+[node name="PlayerSpawn1" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(272, 400)
+
+[node name="PlayerSpawn2" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(368, 400)
+
+[node name="PlayerSpawn3" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(224, 420)
+
+[node name="PlayerSpawn4" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(416, 420)
+
+[node name="Salida" parent="." instance=ExtResource("2_salida")]
+position = Vector2(320, 420)

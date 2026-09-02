@@ -656,6 +656,10 @@ func _physics_process(delta: float) -> void:
 			_request_hablar_viejo_maestro()
 		if Input.is_action_just_pressed("hablar_pescador"):
 			_request_hablar_pescador()
+		if Input.is_action_just_pressed("entrar_tienda"):
+			_request_entrar_tienda()
+		if Input.is_action_just_pressed("salir_tienda"):
+			_request_salir_tienda()
 	move_and_slide()
 
 ## Solo local (no pasa por red, como el cambio de estilo de debug): elegir
@@ -814,6 +818,11 @@ func _update_interaction_hint() -> void:
 	elif _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE) != null:
 		var tienda_hint := _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE)
 		texto = "Pulsa 0 para comprar el pergamino de %s (%.0f fichas)" % [style_data.style_name, tienda_hint.precio_pergamino]
+	elif _find_nearest_puerta_tienda_in_range(HUB_RANGE) != null:
+		var puerta_hint := _find_nearest_puerta_tienda_in_range(HUB_RANGE)
+		texto = "Pulsa F11 para entrar (%s)" % (puerta_hint.nombre_visible if puerta_hint.nombre_visible != "" else "tienda")
+	elif _find_nearest_salida_tienda_in_range(HUB_RANGE) != null:
+		texto = "Pulsa F12 para salir"
 	elif _find_nearest_tablon_in_range(HUB_RANGE) != null:
 		# H6: el texto (incluido el objetivo explicito de Costa/Peaje/Cantera)
 		# vive ahora en TablonMisiones.texto_tablon() -- ver ese script.
@@ -1354,6 +1363,35 @@ func _find_nearest_extraccion_in_range(range_max: float) -> ExtraccionMision:
 		if dist <= range_max and dist < best_dist:
 			best_dist = dist
 			nearest = e
+	return nearest
+
+## Puerta de tienda mas cercana dentro de range_max (scope nuevo H5+, ver
+## plan-desarrollo.md seccion 2 "Interiores de tienda con fundido a negro").
+## Misma proximidad simple que las funciones de arriba.
+func _find_nearest_puerta_tienda_in_range(range_max: float) -> PuertaTienda:
+	var nearest: PuertaTienda = null
+	var best_dist: float = INF
+	for p in get_tree().get_nodes_in_group(PuertaTienda.GRUPO_PUERTAS_TIENDA):
+		if not (p is PuertaTienda):
+			continue
+		var dist: float = global_position.distance_to(p.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = p
+	return nearest
+
+## Salida de tienda mas cercana dentro de range_max (scope nuevo H5+). Misma
+## proximidad simple que _find_nearest_extraccion_in_range.
+func _find_nearest_salida_tienda_in_range(range_max: float) -> SalidaTienda:
+	var nearest: SalidaTienda = null
+	var best_dist: float = INF
+	for s in get_tree().get_nodes_in_group(SalidaTienda.GRUPO_SALIDAS_TIENDA):
+		if not (s is SalidaTienda):
+			continue
+		var dist: float = global_position.distance_to(s.global_position)
+		if dist <= range_max and dist < best_dist:
+			best_dist = dist
+			nearest = s
 	return nearest
 
 func _validate_sender() -> bool:
@@ -3299,6 +3337,8 @@ func submit_elegir_mision(bioma_id: String) -> void:
 		return
 	if NetworkManager.mision_actual != "":
 		return # ya hay una mision en marcha, ignorar
+	if NetworkManager.interior_actual != "":
+		return # dentro de un interior de tienda (scope nuevo H5+), no se puede iniciar mision -- en la practica ya es imposible por distancia (el Tablon solo existe en el Hub), guard explicito de todas formas por simetria con confirm_entrar_tienda
 	if _find_nearest_tablon_in_range(HUB_RANGE) == null:
 		return
 	NetworkManager.confirm_iniciar_mision.rpc(bioma_id)
@@ -3319,6 +3359,51 @@ func submit_volver_hub() -> void:
 	if not get_tree().get_nodes_in_group(GRUPO_JEFE_MISION).is_empty():
 		return # el jefe de la zona sigue vivo, no se puede extraer todavia
 	NetworkManager.confirm_volver_hub.rpc()
+
+# =========================================================================
+# Interiores de tienda del Hub (scope nuevo H5+, ver plan-desarrollo.md
+# seccion 2 "Interiores de tienda con fundido a negro" -- pedido explicito
+# del usuario, no parte del diseno original): F11 entra por la puerta mas
+# cercana (PuertaTienda), F12 sale por la salida del interior activo
+# (SalidaTienda). Mismo patron submit_/confirm_ que Misiones justo arriba --
+# el cliente pide, el host valida rango, y la aplicacion real (fundido a
+# negro + instanciar/liberar la escena de interior) vive en NetworkManager
+# porque afecta a TODOS los peers a la vez, no a un unico personaje.
+# =========================================================================
+
+func _request_entrar_tienda() -> void:
+	var puerta := _find_nearest_puerta_tienda_in_range(HUB_RANGE)
+	if puerta == null:
+		return
+	submit_entrar_tienda.rpc_id(1, puerta.tienda_id)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_entrar_tienda(tienda_id: String) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if NetworkManager.mision_actual != "" or NetworkManager.interior_actual != "":
+		return
+	var puerta := _find_nearest_puerta_tienda_in_range(HUB_RANGE)
+	if puerta == null or puerta.tienda_id != tienda_id:
+		return # el cliente no esta de verdad junto a esa puerta -- no confiar en el parametro a ciegas
+	NetworkManager.confirm_entrar_tienda.rpc(tienda_id)
+
+func _request_salir_tienda() -> void:
+	submit_salir_tienda.rpc_id(1)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_salir_tienda() -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if NetworkManager.interior_actual == "":
+		return
+	if _find_nearest_salida_tienda_in_range(HUB_RANGE) == null:
+		return
+	NetworkManager.confirm_salir_tienda.rpc()
 
 # =========================================================================
 # Casa del equipo (H5 cierre, Terrazas) -- ; Cocina, [ Almacen, ] Jardin.

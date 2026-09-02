@@ -1,0 +1,162 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/economy/sastreria.tscn" id="1_sastreria"]
+[ext_resource type="PackedScene" path="res://scenes/world/salida_tienda.tscn" id="2_salida"]
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_h"]
+size = Vector2(640, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_v"]
+size = Vector2(32, 480)
+
+[node name="SastreriaInterior" type="Node2D"]
+## Interior de la Sastreria (scope nuevo H5+, ver plan-assets.md seccion 8):
+## mood refinado, colorido -- el interior mas "limpio" del hub, contraste
+## vivo de telas sobre madera clara, la iluminacion mas brillante y calida
+## de todo el hub (casi de escaparate).
+
+[node name="Floor" type="ColorRect" parent="."]
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 640.0
+offset_bottom = 480.0
+mouse_filter = 2
+color = Color(0.55, 0.45, 0.3, 1)
+
+[node name="LuzEscaparate" type="ColorRect" parent="."]
+## Iluminacion uniforme brillante -- a proposito casi blanca, rompe con el
+## resto del hub nocturno/humedo.
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 640.0
+offset_bottom = 480.0
+mouse_filter = 2
+color = Color(1.0, 0.95, 0.85, 0.15)
+
+[node name="WallTop" type="StaticBody2D" parent="."]
+position = Vector2(320, 16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallTop"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallTop"]
+offset_left = -320.0
+offset_top = -16.0
+offset_right = 320.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.6, 0.55, 0.45, 1)
+
+[node name="WallBottom" type="StaticBody2D" parent="."]
+position = Vector2(320, 464)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallBottom"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallBottom"]
+offset_left = -320.0
+offset_top = -16.0
+offset_right = 320.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.6, 0.55, 0.45, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="."]
+position = Vector2(16, 240)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallLeft"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallLeft"]
+offset_left = -16.0
+offset_top = -240.0
+offset_right = 16.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.6, 0.55, 0.45, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="."]
+position = Vector2(624, 240)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallRight"]
+offset_left = -16.0
+offset_top = -240.0
+offset_right = 16.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.6, 0.55, 0.45, 1)
+
+[node name="RolloTelaRojo" type="ColorRect" parent="."]
+## Prop placeholder (rollos de tela), 16x64.
+offset_left = 140.0
+offset_top = 100.0
+offset_right = 156.0
+offset_bottom = 164.0
+mouse_filter = 2
+color = Color(0.75, 0.2, 0.2, 1)
+
+[node name="RolloTelaAzul" type="ColorRect" parent="."]
+offset_left = 165.0
+offset_top = 100.0
+offset_right = 181.0
+offset_bottom = 164.0
+mouse_filter = 2
+color = Color(0.2, 0.3, 0.75, 1)
+
+[node name="RolloTelaDorado" type="ColorRect" parent="."]
+offset_left = 190.0
+offset_top = 100.0
+offset_right = 206.0
+offset_bottom = 164.0
+mouse_filter = 2
+color = Color(0.8, 0.65, 0.2, 1)
+
+[node name="Maniqui" type="ColorRect" parent="."]
+## Prop placeholder (maniqui con prenda a medio hacer), 32x64.
+offset_left = 460.0
+offset_top = 100.0
+offset_right = 492.0
+offset_bottom = 164.0
+mouse_filter = 2
+color = Color(0.9, 0.85, 0.75, 1)
+
+[node name="MesaCorte" type="ColorRect" parent="."]
+## Prop placeholder (mesa de corte con tijeras/alfileres), 64x32.
+offset_left = 288.0
+offset_top = 150.0
+offset_right = 352.0
+offset_bottom = 182.0
+mouse_filter = 2
+color = Color(0.45, 0.36, 0.22, 1)
+
+[node name="Espejo" type="ColorRect" parent="."]
+## Prop placeholder (espejo), 32x48.
+offset_left = 500.0
+offset_top = 220.0
+offset_right = 532.0
+offset_bottom = 268.0
+mouse_filter = 2
+color = Color(0.8, 0.85, 0.9, 0.6)
+
+[node name="Sastreria" parent="." instance=ExtResource("1_sastreria")]
+position = Vector2(320, 160)
+
+[node name="PlayerSpawns" type="Node2D" parent="."]
+
+[node name="PlayerSpawn1" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(272, 400)
+
+[node name="PlayerSpawn2" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(368, 400)
+
+[node name="PlayerSpawn3" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(224, 420)
+
+[node name="PlayerSpawn4" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(416, 420)
+
+[node name="Salida" parent="." instance=ExtResource("2_salida")]
+position = Vector2(320, 420)

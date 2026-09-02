@@ -41,6 +41,10 @@ func _ready() -> void:
 	# del Hub para poder volver a ellos tras la primera mision.
 	NetworkManager.mission_root = $Misiones
 	NetworkManager.hub_spawn_points.assign($Hub/Muelle/PlayerSpawns.get_children())
+	# Scope nuevo H5+: contenedor del interior de tienda activo (ver
+	# NetworkManager.confirm_entrar_tienda/confirm_salir_tienda), mismo
+	# criterio que Misiones de arriba.
+	NetworkManager.interior_root = $Interiores
 
 	var client_lobby_id := _client_lobby_id_from_args()
 	if client_lobby_id > 0:

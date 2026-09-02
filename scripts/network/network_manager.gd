@@ -152,6 +152,39 @@ const MISIONES: Dictionary = {
 	"ruinas": preload("res://scenes/world/mision_ruinas/mision_ruinas.tscn"),
 }
 
+## Interiores de tienda del Hub (scope nuevo H5+, ver plan-assets.md seccion
+## 8 "Interiores de tienda" y plan-desarrollo.md seccion 2): mismo patron que
+## MISIONES de arriba -- Dictionary tienda_id -> PackedScene, instanciada bajo
+## interior_root al entrar (ver confirm_entrar_tienda), liberada al volver
+## (ver confirm_salir_tienda). El Casino se queda FUERA a proposito: sigue
+## viviendo en test_room, no en el Hub -- moverlo es trabajo compartido con
+## casino-agent, ver la nota en plan-desarrollo.md seccion 2 antes de
+## anadirlo aqui.
+const TIENDAS_INTERIOR: Dictionary = {
+	"forja": preload("res://scenes/world/interiors/forja_interior.tscn"),
+	"herboristeria": preload("res://scenes/world/interiors/herboristeria_interior.tscn"),
+	"mercado_negro": preload("res://scenes/world/interiors/mercado_negro_interior.tscn"),
+	"sastreria": preload("res://scenes/world/interiors/sastreria_interior.tscn"),
+	"casa_equipo": preload("res://scenes/world/interiors/casa_equipo_interior.tscn"),
+	"taberna": preload("res://scenes/world/interiors/taberna_interior.tscn"),
+}
+
+## Id de la tienda cuyo interior esta activo ahora mismo, o "" si el grupo
+## esta en el Hub (fachadas) o en una mision. Mismo patron que mision_actual
+## de abajo: solo lo muta el host, siempre dentro de confirm_entrar_tienda/
+## confirm_salir_tienda. Los guards de ambas funciones (y de
+## submit_elegir_mision en player.gd) usan esta variable Y mision_actual para
+## que Hub/mision/interior sean mutuamente excluyentes -- no se puede entrar
+## a una tienda en mitad de una mision, ni elegir mision desde dentro de una
+## tienda.
+var interior_actual: String = ""
+
+## Contenedor donde se instancia el interior de tienda activo -- asignado por
+## main.gd en _ready(), hermano de Hub/Misiones (mismo criterio que
+## mission_root: colocado lejos en el mundo para que sus paredes nunca se
+## solapen con las del Hub ni con las de una mision).
+var interior_root: Node = null
+
 ## Dinero "manchado" (H2): pool compartido entre todos los jugadores desde
 ## ya -- la votacion de boveda es H4, no esta implementada, pero no pasa
 ## nada por que el pool ya sea unico ahora mismo. Solo lo muta el host,
@@ -935,3 +968,66 @@ func _reposicionar_jugadores() -> void:
 		jugador.global_position = _spawn_position_for(id)
 		if style_choice.has(id):
 			_reaplicar_estilo_si_hace_falta(id, style_choice[id])
+
+# =========================================================================
+# Interiores de tienda del Hub (scope nuevo H5+) -- transicion Hub<->interior
+# "estilo Pokemon": fundido a negro (ver scripts/ui/fade_transition.gd,
+# autoload FadeTransition) + instanciar/desinstanciar la escena de interior
+# bajo interior_root, exactamente el mismo patron RPC host-autoritativo y de
+# reposicionamiento de spawn_points que confirm_iniciar_mision/
+# confirm_volver_hub de arriba -- unica diferencia real: el swap de escena
+# ocurre DENTRO del callback que le pasamos a FadeTransition.play_transition,
+# para que la carga quede oculta bajo la pantalla en negro en vez de verse a
+# medio hacer. El host decide cuando se entra/sale (submit_entrar_tienda/
+# submit_salir_tienda en player.gd, filtrados por multiplayer.is_server()) y
+# lo replica a todos los peers con un RPC call_local reliable, igual que el
+# resto del autoload.
+# =========================================================================
+
+## Confirma la entrada a una tienda igual en todos los peers. Lo llama el
+## host desde player.gd submit_entrar_tienda(); nunca el cliente
+## directamente. Reutiliza _spawn_points_previos/_reposicionar_jugadores, los
+## mismos que usa el sistema de misiones -- valido porque Hub/mision/tienda
+## son mutuamente excluyentes (ver el guard de abajo), nunca hay dos
+## transiciones activas a la vez que puedan pisarse el valor.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_entrar_tienda(tienda_id: String) -> void:
+	if mision_actual != "" or interior_actual != "":
+		return # ya hay una mision o un interior activo, ignorar peticion duplicada
+	if not TIENDAS_INTERIOR.has(tienda_id):
+		return
+	if interior_root == null:
+		push_warning("NetworkManager: interior_root no asignado, no se puede entrar a la tienda")
+		return
+	# interior_actual se marca SINCRONO, antes del fundido -- si no, un
+	# segundo submit_entrar_tienda que llegue mientras el fundido todavia
+	# esta en marcha (jugador machacando F11, o dos jugadores pidiendo dos
+	# tiendas distintas casi a la vez) veria el guard de arriba todavia en
+	# "" y podria disparar una segunda transicion superpuesta sobre la
+	# primera. Mismo motivo en confirm_salir_tienda mas abajo.
+	interior_actual = tienda_id
+	_spawn_points_previos = spawn_points.duplicate()
+	FadeTransition.play_transition(func() -> void:
+		var instancia: Node = TIENDAS_INTERIOR[tienda_id].instantiate()
+		interior_root.add_child(instancia)
+		var nuevos: Array[Node2D] = []
+		nuevos.assign(instancia.get_node("PlayerSpawns").get_children())
+		spawn_points = nuevos
+		_reposicionar_jugadores()
+	)
+
+## Confirma la salida de una tienda igual en todos los peers: libera la
+## escena de interior activa y restaura los spawn_points del Hub de antes de
+## entrar. Lo llama el host desde player.gd submit_salir_tienda().
+@rpc("any_peer", "call_local", "reliable")
+func confirm_salir_tienda() -> void:
+	if interior_actual == "":
+		return # no hay interior activo del que salir
+	interior_actual = "" # sincrono, antes del fundido -- mismo motivo que confirm_entrar_tienda
+	FadeTransition.play_transition(func() -> void:
+		if interior_root != null:
+			for hijo in interior_root.get_children():
+				hijo.queue_free()
+		spawn_points = _spawn_points_previos if not _spawn_points_previos.is_empty() else hub_spawn_points.duplicate()
+		_reposicionar_jugadores()
+	)

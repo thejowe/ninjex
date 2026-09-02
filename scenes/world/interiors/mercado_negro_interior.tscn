@@ -1,0 +1,173 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/economy/comprador.tscn" id="1_comprador"]
+[ext_resource type="PackedScene" path="res://scenes/world/salida_tienda.tscn" id="2_salida"]
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_h"]
+size = Vector2(640, 32)
+
+[sub_resource type="RectangleShape2D" id="Shape_wall_v"]
+size = Vector2(32, 480)
+
+[node name="MercadoNegroInterior" type="Node2D"]
+## Interior del Mercado Negro (scope nuevo H5+, ver plan-assets.md seccion
+## 8): mood turbio, furtivo -- azules/violetas muy oscuros, iluminacion baja
+## y deliberadamente insuficiente (zonas en sombra), acentos puntuales de
+## lamparas de aceite en vez de luz uniforme. Cuatro compradores fijos
+## (Boticario/Falsificador/Clan rival/Carnicero, ver diseno-juego-ninja.md
+## seccion 4 "Mercado negro") -- reutiliza Comprador.tscn ya existente
+## (economy-agent), esto solo les da un sitio fisico dentro del Hub: hasta
+## ahora ninguno de los cuatro vivia en el Hub (solo Boticario/Carnicero
+## existian, en test_room, sala de pruebas de combate).
+
+[node name="Floor" type="ColorRect" parent="."]
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 640.0
+offset_bottom = 480.0
+mouse_filter = 2
+color = Color(0.08, 0.08, 0.16, 1)
+
+[node name="SombraGeneral" type="ColorRect" parent="."]
+## Capa de sombra global -- a diferencia de la Herboristeria (luz difusa
+## clara y uniforme), aqui la "iluminacion" de base es deliberadamente mas
+## oscura que el resto del hub; las lamparas de abajo son las unicas
+## manchas de luz.
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 640.0
+offset_bottom = 480.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.15)
+
+[node name="LamparaIzq" type="ColorRect" parent="."]
+## Lampara de aceite -- acento puntual sucio, no un farolillo limpio.
+offset_left = 100.0
+offset_top = 80.0
+offset_right = 180.0
+offset_bottom = 160.0
+mouse_filter = 2
+color = Color(0.8, 0.6, 0.2, 0.18)
+
+[node name="LamparaDer"  type="ColorRect" parent="."]
+offset_left = 480.0
+offset_top = 260.0
+offset_right = 560.0
+offset_bottom = 340.0
+mouse_filter = 2
+color = Color(0.8, 0.6, 0.2, 0.18)
+
+[node name="WallTop" type="StaticBody2D" parent="."]
+position = Vector2(320, 16)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallTop"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallTop"]
+offset_left = -320.0
+offset_top = -16.0
+offset_right = 320.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.14, 0.12, 0.22, 1)
+
+[node name="WallBottom" type="StaticBody2D" parent="."]
+position = Vector2(320, 464)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallBottom"]
+shape = SubResource("Shape_wall_h")
+
+[node name="Visual" type="ColorRect" parent="WallBottom"]
+offset_left = -320.0
+offset_top = -16.0
+offset_right = 320.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.14, 0.12, 0.22, 1)
+
+[node name="WallLeft" type="StaticBody2D" parent="."]
+position = Vector2(16, 240)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallLeft"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallLeft"]
+offset_left = -16.0
+offset_top = -240.0
+offset_right = 16.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.14, 0.12, 0.22, 1)
+
+[node name="WallRight" type="StaticBody2D" parent="."]
+position = Vector2(624, 240)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
+shape = SubResource("Shape_wall_v")
+
+[node name="Visual" type="ColorRect" parent="WallRight"]
+offset_left = -16.0
+offset_top = -240.0
+offset_right = 16.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.14, 0.12, 0.22, 1)
+
+[node name="CajaContrabando1" type="ColorRect" parent="."]
+## Prop placeholder (cajas de contrabando a medio abrir), 32x32.
+offset_left = 200.0
+offset_top = 340.0
+offset_right = 232.0
+offset_bottom = 372.0
+mouse_filter = 2
+color = Color(0.3, 0.24, 0.16, 1)
+
+[node name="CajaContrabando2" type="ColorRect" parent="."]
+offset_left = 240.0
+offset_top = 350.0
+offset_right = 272.0
+offset_bottom = 382.0
+mouse_filter = 2
+color = Color(0.28, 0.22, 0.15, 1)
+
+[node name="Mostrador" type="ColorRect" parent="."]
+## Prop placeholder (mostrador improvisado, no una tienda "oficial"), 64x32.
+offset_left = 288.0
+offset_top = 200.0
+offset_right = 352.0
+offset_bottom = 232.0
+mouse_filter = 2
+color = Color(0.25, 0.2, 0.3, 1)
+
+[node name="Boticario" parent="." instance=ExtResource("1_comprador")]
+position = Vector2(150, 200)
+tipo = 0
+
+[node name="Carnicero" parent="." instance=ExtResource("1_comprador")]
+position = Vector2(490, 200)
+tipo = 1
+
+[node name="Falsificador" parent="." instance=ExtResource("1_comprador")]
+position = Vector2(150, 320)
+tipo = 2
+
+[node name="ClanRival" parent="." instance=ExtResource("1_comprador")]
+position = Vector2(490, 320)
+tipo = 3
+
+[node name="PlayerSpawns" type="Node2D" parent="."]
+
+[node name="PlayerSpawn1" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(272, 400)
+
+[node name="PlayerSpawn2" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(368, 400)
+
+[node name="PlayerSpawn3" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(224, 420)
+
+[node name="PlayerSpawn4" type="Marker2D" parent="PlayerSpawns"]
+position = Vector2(416, 420)
+
+[node name="Salida" parent="." instance=ExtResource("2_salida")]
+position = Vector2(320, 420)

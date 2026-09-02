@@ -1,14 +1,9 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=11 format=3]
 
-[ext_resource type="PackedScene" path="res://scenes/economy/forja.tscn" id="1_forja"]
-[ext_resource type="PackedScene" path="res://scenes/economy/herboristeria.tscn" id="2_herb"]
-[ext_resource type="PackedScene" path="res://scenes/economy/taberna.tscn" id="3_taberna"]
-[ext_resource type="PackedScene" path="res://scenes/economy/sastreria.tscn" id="4_sastreria"]
-[ext_resource type="PackedScene" path="res://scenes/economy/casa_equipo.tscn" id="5_casa_equipo"]
 [ext_resource type="PackedScene" path="res://scenes/world/tablon_misiones.tscn" id="6_tablon_misiones"]
-[ext_resource type="PackedScene" path="res://scenes/economy/tabernera.tscn" id="7_tabernera"]
 [ext_resource type="PackedScene" path="res://scenes/economy/pescador.tscn" id="8_pescador"]
 [ext_resource type="PackedScene" path="res://scenes/economy/viejo_maestro.tscn" id="9_viejo_maestro"]
+[ext_resource type="PackedScene" path="res://scenes/world/puerta_tienda.tscn" id="10_puerta_tienda"]
 
 [sub_resource type="RectangleShape2D" id="Shape_wall_h_1024"]
 size = Vector2(1024, 32)
@@ -162,11 +157,10 @@ offset_bottom = 384.0
 mouse_filter = 2
 color = Color(0.3, 0.28, 0.35, 1)
 
-[node name="TabernaAnclaRota" parent="Muelle" instance=ExtResource("3_taberna")]
+[node name="PuertaTaberna" parent="Muelle" instance=ExtResource("10_puerta_tienda")]
 position = Vector2(2250, 600)
-
-[node name="Tabernera" parent="Muelle" instance=ExtResource("7_tabernera")]
-position = Vector2(2190, 550)
+tienda_id = "taberna"
+nombre_visible = "El Ancla Rota"
 
 [node name="Pescador" parent="Muelle" instance=ExtResource("8_pescador")]
 position = Vector2(1550, 550)
@@ -314,14 +308,25 @@ offset_bottom = 384.0
 mouse_filter = 2
 color = Color(0.3, 0.28, 0.35, 1)
 
-[node name="Forja" parent="CalleFaroles" instance=ExtResource("1_forja")]
+[node name="PuertaForja" parent="CalleFaroles" instance=ExtResource("10_puerta_tienda")]
 position = Vector2(1650, -950)
+tienda_id = "forja"
+nombre_visible = "Forja"
 
-[node name="Herboristeria" parent="CalleFaroles" instance=ExtResource("2_herb")]
+[node name="PuertaHerboristeria" parent="CalleFaroles" instance=ExtResource("10_puerta_tienda")]
 position = Vector2(2250, -950)
+tienda_id = "herboristeria"
+nombre_visible = "Herboristeria"
 
-[node name="Sastreria" parent="CalleFaroles" instance=ExtResource("4_sastreria")]
+[node name="PuertaMercadoNegro" parent="CalleFaroles" instance=ExtResource("10_puerta_tienda")]
+position = Vector2(1650, -500)
+tienda_id = "mercado_negro"
+nombre_visible = "Mercado negro"
+
+[node name="PuertaSastreria" parent="CalleFaroles" instance=ExtResource("10_puerta_tienda")]
 position = Vector2(1950, -700)
+tienda_id = "sastreria"
+nombre_visible = "Sastreria"
 
 [node name="Escalera2" type="Node2D" parent="."]
 
@@ -495,8 +500,10 @@ color = Color(0.3, 0.28, 0.35, 1)
 
 [node name="Terrazas" type="Node2D" parent="."]
 
-[node name="CasaEquipo" parent="Terrazas" instance=ExtResource("5_casa_equipo")]
+[node name="PuertaCasaEquipo" parent="Terrazas" instance=ExtResource("10_puerta_tienda")]
 position = Vector2(1962, -3120)
+tienda_id = "casa_equipo"
+nombre_visible = "Casa del equipo"
 
 [node name="ViejoMaestro" parent="Terrazas" instance=ExtResource("9_viejo_maestro")]
 position = Vector2(1650, -2900)
