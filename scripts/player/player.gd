@@ -63,6 +63,41 @@ const GRUPO_ENEMIGOS := "enemigos"
 ## de _status_label (que es para resultados/avisos puntuales, no un aviso
 ## persistente mientras estas de pie al lado de algo).
 @onready var _interaction_label: Label = $HUD/InteractionLabel
+## Panel de vida/chakra propio en pantalla, arriba a la derecha (scope nuevo
+## 2026-09-02 -- ver plan-desarrollo.md). Las barras de StatusBars sobre la
+## cabeza (arriba) NO se quitan: se mantienen para todos (propio incluido)
+## porque en combate cuerpo a cuerpo son la lectura mas rapida (no hay que
+## desviar la vista a una esquina de la pantalla). Este panel es el
+## complemento fijo -- grande, siempre visible, sin depender de la camara.
+@onready var _own_health_fill: ColorRect = $HUD/OwnStatsPanel/OwnHealthFill
+@onready var _own_health_label: Label = $HUD/OwnStatsPanel/OwnHealthLabel
+@onready var _own_chakra_bg: ColorRect = $HUD/OwnStatsPanel/OwnChakraBg
+@onready var _own_chakra_fill: ColorRect = $HUD/OwnStatsPanel/OwnChakraFill
+@onready var _own_chakra_label: Label = $HUD/OwnStatsPanel/OwnChakraLabel
+## Hasta 3 companeros (partida de 2-4 jugadores) debajo del panel propio, en
+## pequeño. Mismo dato ya sincronizado que las barras sobre la cabeza
+## (vida_actual/chakra_current via confirm_damage_taken y el resto de
+## confirm_* de esta clase, todos call_local reliable) -- no se inventa
+## sincronizacion nueva, solo se espeja en pantalla. Las de los companeros
+## sobre SU cabeza si se mantienen (mismo motivo: combate cercano rapido).
+@onready var _companion_rows: Array[Control] = [
+	$HUD/CompanionsPanel/Row1, $HUD/CompanionsPanel/Row2, $HUD/CompanionsPanel/Row3,
+]
+@onready var _companion_name_labels: Array[Label] = [
+	$HUD/CompanionsPanel/Row1/NameLabel, $HUD/CompanionsPanel/Row2/NameLabel, $HUD/CompanionsPanel/Row3/NameLabel,
+]
+@onready var _companion_health_fills: Array[ColorRect] = [
+	$HUD/CompanionsPanel/Row1/HealthFill, $HUD/CompanionsPanel/Row2/HealthFill, $HUD/CompanionsPanel/Row3/HealthFill,
+]
+@onready var _companion_chakra_bgs: Array[ColorRect] = [
+	$HUD/CompanionsPanel/Row1/ChakraBg, $HUD/CompanionsPanel/Row2/ChakraBg, $HUD/CompanionsPanel/Row3/ChakraBg,
+]
+@onready var _companion_chakra_fills: Array[ColorRect] = [
+	$HUD/CompanionsPanel/Row1/ChakraFill, $HUD/CompanionsPanel/Row2/ChakraFill, $HUD/CompanionsPanel/Row3/ChakraFill,
+]
+## Minimapa arriba a la izquierda -- radar abstracto, ver cabecera de
+## minimap_radar.gd para por que (en vez de SubViewport con mapa real).
+@onready var _minimap: MinimapRadar = $HUD/MinimapRadar
 
 # Colores base de TorsoRect/LegsRect. Antes eran los mismos const fijos que
 # trae player.tscn (siempre verde/azul, sin importar el estilo); ahora son
@@ -86,6 +121,12 @@ const POTENCIADOR_COLOR_TIERRA := Color(0.55, 0.4, 0.2, 0.55)
 ## Ancho total (a ratio 1.0) del relleno de las barras -- coincide con el
 ## offset_left/right de HealthBarFill/ChakraBarFill en player.tscn (32px).
 const STATUS_BAR_WIDTH := 32.0
+## Ancho a ratio 1.0 de las barras del panel fijo de pantalla (OwnStatsPanel/
+## CompanionsPanel) -- coincide con el offset_right de sus *Bg/*Fill en
+## player.tscn (240px). Escala independiente de STATUS_BAR_WIDTH porque unas
+## son ColorRect en espacio de mundo (mundo -> pixeles de camara) y estas
+## viven en el CanvasLayer del HUD (pixeles de pantalla fijos).
+const SCREEN_BAR_WIDTH := 240.0
 
 # --- Screen shake (solo camara local, is_multiplayer_authority) ---
 const SCREEN_SHAKE_DECAY_PER_SECOND := 26.0
@@ -421,6 +462,12 @@ func _ready() -> void:
 		# personajes de otros peers para no acumular Labels invisibles
 		# encima unos de otros en pantalla.
 		_money_label.get_parent().visible = false
+		# Mismo motivo: panel de vida/chakra propio, panel de companeros y
+		# minimapa son solo del jugador local -- en la copia de cada OTRO
+		# peer se ocultan para no acumular una segunda copia superpuesta.
+		$HUD/OwnStatsPanel.visible = false
+		$HUD/CompanionsPanel.visible = false
+		_minimap.visible = false
 
 ## Reinicia todo el estado dependiente de estilo. Se llama al arrancar y
 ## cada vez que el debug de playtest cambia de estilo en caliente.
@@ -497,6 +544,73 @@ func _update_status_bars() -> void:
 		var chakra_ratio: float = clamp(chakra_current / style_data.chakra_max, 0.0, 1.0)
 		_chakra_bar_fill.size.x = STATUS_BAR_WIDTH * chakra_ratio
 
+## Panel fijo de pantalla (propio + companeros) y minimapa -- solo tiene
+## sentido calcularlo para el jugador local, se llama unicamente desde el
+## bloque is_multiplayer_authority() de _physics_process. Reutiliza
+## vida_actual/chakra_current de este nodo y de los otros nodos Player en
+## GRUPO_JUGADORES: son el mismo dato ya sincronizado que usan las barras
+## sobre la cabeza (_update_status_bars), no un canal nuevo.
+func _update_screen_hud() -> void:
+	_update_own_stats_panel()
+	var companions := _nearby_companions()
+	_update_companions_panel(companions)
+	_update_minimap(companions)
+
+func _update_own_stats_panel() -> void:
+	var vida_ratio: float = clamp(vida_actual / max(style_data.vida_maxima, 0.001), 0.0, 1.0)
+	_own_health_fill.size.x = SCREEN_BAR_WIDTH * vida_ratio
+	_own_health_label.text = "Vida %d/%d" % [ceili(vida_actual), int(style_data.vida_maxima)]
+	if style_data.chakra_max <= 0.0:
+		_own_chakra_bg.visible = false
+		_own_chakra_fill.visible = false
+		_own_chakra_label.visible = false
+	else:
+		_own_chakra_bg.visible = true
+		_own_chakra_fill.visible = true
+		_own_chakra_label.visible = true
+		var chakra_ratio: float = clamp(chakra_current / style_data.chakra_max, 0.0, 1.0)
+		_own_chakra_fill.size.x = SCREEN_BAR_WIDTH * chakra_ratio
+		_own_chakra_label.text = "Chakra %d/%d" % [ceili(chakra_current), int(style_data.chakra_max)]
+
+## Hasta _companion_rows.size() (3) jugadores de GRUPO_JUGADORES que no sean
+## este (orden estable por peer_id -- nombre del nodo, ver
+## NetworkManager._spawn_player -- para que cada companero no salte de fila
+## entre fotogramas).
+func _nearby_companions() -> Array:
+	var others: Array = []
+	for jugador in get_tree().get_nodes_in_group(GRUPO_JUGADORES):
+		if jugador != self:
+			others.append(jugador)
+	others.sort_custom(func(a, b): return str(a.name).to_int() < str(b.name).to_int())
+	if others.size() > _companion_rows.size():
+		others.resize(_companion_rows.size())
+	return others
+
+func _update_companions_panel(companions: Array) -> void:
+	for i in range(_companion_rows.size()):
+		if i >= companions.size():
+			_companion_rows[i].visible = false
+			continue
+		_companion_rows[i].visible = true
+		var companero: CharacterBody2D = companions[i]
+		_companion_name_labels[i].text = "Aliado %s" % companero.name
+		var vida_ratio: float = clamp(companero.vida_actual / max(companero.style_data.vida_maxima, 0.001), 0.0, 1.0)
+		_companion_health_fills[i].size.x = SCREEN_BAR_WIDTH * vida_ratio
+		if companero.style_data.chakra_max <= 0.0:
+			_companion_chakra_bgs[i].visible = false
+			_companion_chakra_fills[i].visible = false
+		else:
+			_companion_chakra_bgs[i].visible = true
+			_companion_chakra_fills[i].visible = true
+			var chakra_ratio: float = clamp(companero.chakra_current / companero.style_data.chakra_max, 0.0, 1.0)
+			_companion_chakra_fills[i].size.x = SCREEN_BAR_WIDTH * chakra_ratio
+
+func _update_minimap(companions: Array) -> void:
+	var offsets: Array[Vector2] = []
+	for companero in companions:
+		offsets.append(companero.global_position - global_position)
+	_minimap.set_companions(offsets)
+
 ## Screen shake breve y sutil, solo visible en la camara del jugador LOCAL
 ## (is_multiplayer_authority): al conectar un golpe (Basico/Proyectil/Impulso)
 ## o al recibir daño real. strength en pixeles, decae rapido via
@@ -555,6 +669,7 @@ func _physics_process(delta: float) -> void:
 		_handle_aim()
 		_update_money_label()
 		_update_interaction_hint()
+		_update_screen_hud()
 		if style_data.melee_only:
 			_handle_puertas(delta)
 		_handle_zone_input(delta)
