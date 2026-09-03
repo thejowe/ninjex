@@ -303,10 +303,11 @@ var pergaminos_sellos_comprados: Dictionary = {}
 ## defecto). Un id distinto de "factory" viene del pool de T4 (ver
 ## StyleData.pergaminos_pool / pergaminos_aprendidos abajo) y debe estar
 ## aprendido para el peer+estilo o player.gd.submit_equipar_tecnica_loadout
-## lo rechaza. Solo lo muta player.gd.confirm_equipar_tecnica_loadout -- T5
-## (Tienda de Pergaminos, casino-agent) llama a submit_equipar_tecnica_loadout
-## tras cobrar las fichas de la compra, la ranura Q/E en si (RPC submit_/
-## confirm_, cooldown propio, coste de chakra) no hay que tocarla.
+## lo rechaza. Solo lo muta player.gd.confirm_equipar_tecnica_loadout --
+## player.gd.confirm_comprar_pergamino (T5, casino-agent) llama a
+## submit_equipar_tecnica_loadout tras cobrar las fichas de la compra, la
+## ranura Q/E en si (RPC submit_/confirm_, cooldown propio, coste de chakra)
+## no se toca.
 var loadout_equipped: Dictionary = {}
 
 ## Tecnicas de pergamino APRENDIDAS del pool de T4 -- peer_id -> Dictionary
@@ -318,9 +319,9 @@ var loadout_equipped: Dictionary = {}
 ## perderse de aqui (T5 solo necesita re-equipar, no volver a pagar). Mismo
 ## patron por-peer-y-por-estilo que pergaminos_sellos_comprados de arriba,
 ## compra unica y permanente. "factory" nunca aparece aqui -- esta siempre
-## disponible sin comprar (T2), no es parte del pool de T4. Solo lo mutara
-## la compra real de T5 (confirm_comprar_tecnica_loadout, aun no existe);
-## player.gd.submit_equipar_tecnica_loadout ya lo CONSULTA para validar el
+## disponible sin comprar (T2), no es parte del pool de T4. Lo muta
+## player.gd.confirm_comprar_pergamino (T5, casino-agent) al comprar;
+## player.gd.submit_equipar_tecnica_loadout lo CONSULTA para validar el
 ## equipado.
 var pergaminos_aprendidos: Dictionary = {}
 

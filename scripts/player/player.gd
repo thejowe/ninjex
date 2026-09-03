@@ -282,6 +282,15 @@ var _apuesta_moneda: String = "limpio"
 const APUESTA_STEP := 10.0
 const APUESTA_MONTO_MINIMO := 1.0
 var _apuesta_monto: float = 20.0
+
+## T5 (Tienda de Pergaminos, casino-agent): id de la tecnica recien comprada
+## en espera de que el jugador pulse Q o E para decidir a que hueco va --
+## ver confirm_comprar_pergamino/_confirmar_hueco_pergamino_pendiente. Vacio
+## == no hay compra pendiente. Puramente local (como _apuesta_moneda): cada
+## cliente solo ve la compra pendiente de su propio jugador, y se aborta
+## sola si te alejas de la tienda sin elegir (ver el chequeo en el input de
+## loadout_q/loadout_e) para no secuestrar esas teclas en pleno combate.
+var _pergamino_pendiente_equipar: String = ""
 ## Costes de chakra de las trampas de casino (H6). Doblados si
 ## NetworkManager.sospecha_tramo(peer_id) == "ambar" -- brief 2.3: "las
 ## trampas cuestan el doble de chakra". Valores en la misma escala que
@@ -766,10 +775,18 @@ func _physics_process(delta: float) -> void:
 			_request_impulse()
 		if Input.is_action_just_pressed("potenciador") and not style_data.melee_only and _cooldown_remaining("potenciador") <= 0.0:
 			_request_potenciador()
-		if Input.is_action_just_pressed("loadout_q") and _cooldown_remaining("loadout_q") <= 0.0:
-			_request_loadout_technique("Q")
-		if Input.is_action_just_pressed("loadout_e") and _cooldown_remaining("loadout_e") <= 0.0:
-			_request_loadout_technique("E")
+		if _pergamino_pendiente_equipar != "" and _find_nearest_tienda_pergaminos_in_range(CASINO_RANGE) == null:
+			_pergamino_pendiente_equipar = "" # te alejaste sin elegir -- se aborta, no se pierde (sigue en pergaminos_aprendidos)
+		if _pergamino_pendiente_equipar != "":
+			if Input.is_action_just_pressed("loadout_q"):
+				_confirmar_hueco_pergamino_pendiente("Q")
+			if Input.is_action_just_pressed("loadout_e"):
+				_confirmar_hueco_pergamino_pendiente("E")
+		else:
+			if Input.is_action_just_pressed("loadout_q") and _cooldown_remaining("loadout_q") <= 0.0:
+				_request_loadout_technique("Q")
+			if Input.is_action_just_pressed("loadout_e") and _cooldown_remaining("loadout_e") <= 0.0:
+				_request_loadout_technique("E")
 		if Input.is_action_just_pressed("soporte") and _cooldown_remaining("soporte") <= 0.0:
 			_request_soporte()
 		if Input.is_action_just_pressed("cargar_cadaver"):
@@ -3754,21 +3771,36 @@ func confirm_sastreria_tinte(peer_id: int, indice: int, nuevo_limpio: float) -> 
 	_status_label.text = "Tinte cambiado"
 
 # =========================================================================
-# Tienda de Pergaminos (H6, Muelle Alto) -- tecla 0. Vende el desbloqueo
-# permanente de la tecnica de Sellos de CADA estilo, una compra por estilo y
-# por jugador. A diferencia de Forja/Sastreria (pool compartido de dinero
-# limpio), aqui el gasto tambien es individual: paga con las FICHAS del
-# propio jugador (NetworkManager.fichas), nunca del grupo -- ver comentario
-# de cabecera de NetworkManager.fichas y tienda_pergaminos.gd.
+# Tienda de Pergaminos (H6, Muelle Alto) -- tecla 0. Vende, una a una,
+# tecnicas del pool de pergaminos del estilo actual (T4, style_data.
+# pergaminos_pool/find_pergamino_technique()) para los huecos de loadout
+# Q/E de T2. Precio FIJO por tecnica (tienda.precio_pergamino, sin tocar
+# T5 -- el ficha_price propio de cada PergaminoTechnique queda para
+# tuning/arte fuera de esta tanda). A diferencia de Forja/Sastreria (pool
+# compartido de dinero limpio), aqui el gasto tambien es individual: paga
+# con las FICHAS del propio jugador (NetworkManager.fichas), nunca del
+# grupo -- ver comentario de cabecera de NetworkManager.fichas.
+#
+# T5 (rework de combate 2026-09-03, casino-agent): comprar ya NO desbloquea
+# sin mas -- tras pagar, el jugador debe pulsar Q o E (ver
+# _pergamino_pendiente_equipar/_confirmar_hueco_pergamino_pendiente mas
+# arriba) para decidir a que hueco va. Esa eleccion SUSTITUYE lo que hubiera
+# antes en ese hueco, pero no reimplementa el equipado ni la sustitucion:
+# llama a player.gd.submit_equipar_tecnica_loadout (T4), que ya se encarga.
+# La tecnica sustituida no se pierde -- sigue en pergaminos_aprendidos como
+# "aprendida pero no equipada", reequipable gratis luego sin volver a pagar.
 # =========================================================================
 
 func _request_comprar_pergamino() -> void:
 	submit_comprar_pergamino.rpc_id(1)
 
-## Compra SIEMPRE el pergamino del estilo actualmente equipado (style_data) --
-## mismo criterio de "una sola accion obvia por tecla" que el resto de la
-## economia en este vertical slice sin UI real. Si ya esta comprado para ese
-## estilo, no hace nada (mensaje informativo, no penaliza).
+## Compra SIEMPRE la siguiente tecnica del pool de pergaminos del estilo
+## actualmente equipado (style_data.pergaminos_pool) que este jugador aun no
+## tenga en NetworkManager.pergaminos_aprendidos -- mismo criterio de "una
+## sola accion obvia por tecla" que el resto de la economia en este vertical
+## slice sin UI real (orden fijo del pool, no hay seleccion de cual). Si ya
+## las tiene todas aprendidas para ese estilo, no hace nada (mensaje
+## informativo, no penaliza).
 @rpc("any_peer", "call_local", "reliable")
 func submit_comprar_pergamino() -> void:
 	if not multiplayer.is_server():
@@ -3781,26 +3813,44 @@ func submit_comprar_pergamino() -> void:
 		return
 	var peer_id := get_multiplayer_authority()
 	var estilo_key: String = style_data.element_name
-	var comprados: Dictionary = NetworkManager.pergaminos_sellos_comprados.get(peer_id, {})
-	if comprados.get(estilo_key, false):
-		confirm_casino_mensaje.rpc("Ya tienes el pergamino de %s" % style_data.style_name)
+	var aprendidas: Array = NetworkManager.pergaminos_aprendidos.get(peer_id, {}).get(estilo_key, [])
+	var tecnica: PergaminoTechnique = null
+	for tech in style_data.pergaminos_pool:
+		if not aprendidas.has(tech.id):
+			tecnica = tech
+			break
+	if tecnica == null:
+		confirm_casino_mensaje.rpc("Ya tienes todas las tecnicas de pergamino de %s" % style_data.style_name)
 		return
 	var fichas_actuales: float = NetworkManager.fichas.get(peer_id, 0.0)
 	if fichas_actuales < tienda.precio_pergamino:
 		confirm_casino_mensaje.rpc("Necesitas %.0f fichas para el pergamino de %s" % [tienda.precio_pergamino, style_data.style_name])
 		return
 	var nuevas_fichas: float = fichas_actuales - tienda.precio_pergamino
-	confirm_comprar_pergamino.rpc(estilo_key, nuevas_fichas)
+	confirm_comprar_pergamino.rpc(estilo_key, tecnica.id, tecnica.display_name, nuevas_fichas)
 
 @rpc("any_peer", "call_local", "reliable")
-func confirm_comprar_pergamino(estilo_key: String, nuevas_fichas: float) -> void:
+func confirm_comprar_pergamino(estilo_key: String, technique_id: String, technique_name: String, nuevas_fichas: float) -> void:
 	var peer_id := get_multiplayer_authority()
-	var comprados: Dictionary = NetworkManager.pergaminos_sellos_comprados.get(peer_id, {})
-	comprados[estilo_key] = true
-	NetworkManager.pergaminos_sellos_comprados[peer_id] = comprados
+	var aprendidas_por_estilo: Dictionary = NetworkManager.pergaminos_aprendidos.get(peer_id, {})
+	var lista: Array = aprendidas_por_estilo.get(estilo_key, [])
+	lista.append(technique_id)
+	aprendidas_por_estilo[estilo_key] = lista
+	NetworkManager.pergaminos_aprendidos[peer_id] = aprendidas_por_estilo
 	NetworkManager.fichas[peer_id] = nuevas_fichas
 	_status_label.modulate = Color(1, 1, 1)
-	_status_label.text = "Pergamino comprado: %s (%s)" % [style_data.style_name, style_data.sellos_technique_name]
+	_status_label.text = "Pergamino comprado: %s -- pulsa Q o E para equiparlo" % technique_name
+	if is_multiplayer_authority():
+		_pergamino_pendiente_equipar = technique_id
+
+## T5: resuelve la compra pendiente llamando al punto de entrada
+## host-autoritativo de T4 (submit_equipar_tecnica_loadout) en vez de
+## reimplementar el equipado -- la sustitucion del hueco (y que la tecnica
+## sustituida quede aprendida-pero-no-equipada) ya la resuelve
+## confirm_equipar_tecnica_loadout de T4 solo, sin logica nueva aqui.
+func _confirmar_hueco_pergamino_pendiente(slot: String) -> void:
+	submit_equipar_tecnica_loadout.rpc_id(1, slot, _pergamino_pendiente_equipar)
+	_pergamino_pendiente_equipar = ""
 
 # =========================================================================
 # Misiones (H6) -- Tablon del Muelle (F1-F5 elige bioma) y extraccion al
