@@ -294,6 +294,22 @@ var fichas: Dictionary = {}
 ## consulta para decidir si la tecnica de Sellos in-combate se ejecuta o no.
 var pergaminos_sellos_comprados: Dictionary = {}
 
+## Tecnica equipada en cada hueco de loadout (T2, rework de combate
+## 2026-09-03) -- peer_id -> Dictionary {"Q": String, "E": String}. Mismo
+## patron POR JUGADOR que forja_nivel/pergaminos_sellos_comprados de arriba.
+## Sin entrada para un peer, o sin clave "Q"/"E" dentro de su Dictionary ==
+## la tecnica de FABRICA de ese hueco para el estilo actual (ver
+## player.gd._equipped_loadout_technique(), que devuelve "factory" por
+## defecto). Este es el PUNTO DE EXTENSION deliberado para T4 (pool de
+## tecnicas de pergamino por estilo, fuera de esta tanda): T4 solo necesita
+## anadir mas ids ademas de "factory" al match de
+## player.gd.submit_loadout_technique() y un flujo en la Tienda de
+## Pergaminos (T5, casino-agent) que escriba aqui via un futuro
+## confirm_equipar_tecnica -- la ranura Q/E en si (RPC submit_/confirm_,
+## cooldown propio, coste de chakra) ya no hay que tocarla. Solo lo mutara
+## el host cuando exista ese flujo; de momento nada escribe aqui todavia.
+var loadout_equipped: Dictionary = {}
+
 ## Medidor de sospecha (H6 casino, brief 2.3 / diseno "El casino") -- POR
 ## JUGADOR, no compartido como los pools de dinero: "te vigilan a ti", no al
 ## grupo. Mismo patron que forja_nivel de arriba: Dictionary peer_id ->

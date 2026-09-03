@@ -1,6 +1,7 @@
 extends Node2D
 class_name ZonePreview
-## Indicador de carga de Zona (mantener Q): aparece al pulsar, sigue al
+## Indicador de carga de Zona (mantener Mayus/Shift, reasignada desde Q en
+## el rework de combate 2026-09-03): aparece al pulsar, sigue al
 ## cursor y crece con el radio mientras se mantiene, se coloca al soltar.
 ##
 ## Puramente cosmetico y solo local a quien esta cargando -- no se replica

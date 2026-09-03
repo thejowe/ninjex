@@ -21,6 +21,18 @@ extends CharacterBody2D
 ## spawn (ver scripts/ui/seleccion_estilo.gd + NetworkManager.submit_style_choice/
 ## _spawn_player) -- estas teclas quedan solo como atajo de debug, no hace
 ## falta tocarlas para jugar.
+##
+## Rework de combate 2026-09-03 (plan-desarrollo.md seccion 2.1, T1-T3,
+## pedido explicito del usuario -- ver diagnostico de choque con reglas
+## invariantes de pilar-agent citado alli antes de tocar nada mas): el
+## chakra dejo de recuperarse golpeando con el Basico y pasa a regenerarse
+## solo por tiempo (ver chakra_current, _advance_chakra_regen); a cambio,
+## cada ranura que no sea el Basico gano su propio cooldown (ver
+## _slot_cooldowns) -- es lo que ahora obliga a volver al Basico entre usos.
+## Zona y Potenciador se reasignaron de Q/E a Mayus/Ctrl; Q y E pasaron a
+## ser 2 huecos de tecnica de loadout por estilo (ver seccion "Loadout Q/E"
+## mas abajo). Ranura nueva de Soporte en F15 (ver seccion "Soporte"),
+## unica que puede afectar a quien la lanza.
 
 const SPEED := 220.0
 const DEFAULT_STYLE_PATH := "res://resources/styles/fuego.tres"
@@ -138,9 +150,33 @@ var _screen_shake_strength: float = 0.0
 var _torso_flash_tween: Tween = null
 var _legs_flash_tween: Tween = null
 
-## Chakra actual. Lo fija el host via confirm_*(); nunca sube solo con el
-## tiempo (no hay _process que lo regenere). En Fisico se queda siempre a 0
-## (chakra_max = 0 en su StyleData): no tiene Proyectil ni Zona que gastarlo.
+## Chakra actual. En Fisico se queda siempre a 0 (chakra_max = 0 en su
+## StyleData): no tiene Proyectil/Zona/Potenciador/Loadout/Soporte que
+## gastarlo.
+##
+## Rework de combate 2026-09-03 (plan-desarrollo.md seccion 2.1, T1): hasta
+## esta tanda SOLO subia golpeando con el Basico ("el chakra se recupera
+## golpeando, nunca con el tiempo" era la regla mas repetida del diseno
+## original). El usuario pidio explicitamente sustituirla por regeneracion
+## PASIVA por tiempo -- ver _advance_chakra_regen()/_server_regen_chakra()/
+## _predict_chakra_regen() mas abajo. Con eso, lo que obliga a volver al
+## Basico entre usos de una ranura ya no es "sin chakra", es el cooldown
+## propio de cada ranura (ver _slot_cooldowns) -- el Basico sigue siendo la
+## UNICA ranura sin cooldown.
+##
+## El host es la unica fuente autoritativa: su copia local de CADA nodo
+## Player (incluidos los de peers remotos, que tambien existen en el arbol
+## del host aunque is_multiplayer_authority() de alli sea false) es la que
+## de verdad valida el gasto en submit_*(); por eso la regeneracion
+## autoritativa corre con multiplayer.is_server() como guarda, NO con
+## is_multiplayer_authority() (que en el host solo seria true para SU PROPIO
+## personaje) -- de lo contrario el chakra de cualquier peer que no fuera el
+## host nunca se regeneraria en la copia que de verdad importa. El resto de
+## peers solo PREDICEN la misma formula en su pantalla (cosmetica, para que
+## la barra no se vea congelada entre sincronizaciones) y el host corrige
+## cada CHAKRA_REGEN_SYNC_INTERVAL segundos via confirm_chakra_sync -- ver
+## T6 en plan-desarrollo.md (auditoria de red, netcode-agent) para el
+## seguimiento de este mecanismo.
 var chakra_current: float = 0.0
 ## Golpe actual dentro de la cadena del Basico (0 = sin combo activo).
 var combo_count: int = 0
@@ -152,6 +188,37 @@ var combo_count: int = 0
 var vida_actual: float = 100.0
 
 var _combo_window_timer: float = 0.0
+
+# --- Cooldowns por ranura (T1, rework de combate 2026-09-03) --------------
+## Dictionary generico slot_id (String) -> segundos restantes, en vez de una
+## variable suelta por ranura (a diferencia de _impulse_cooldown_remaining,
+## que ya existia de antes y se deja intacto). Slot ids en uso: "proyectil"
+## (Proyectil/Agarre comparten cooldown -- son la MISMA ranura, un estilo
+## solo tiene uno de los dos), "zona" (Zona/Lanzamiento, mismo criterio),
+## "potenciador", "sellos", y desde T2/T3 mas abajo "loadout_q", "loadout_e",
+## "soporte". Es tambien el punto de extension para T4 (pool de tecnicas de
+## pergamino equipables en Q/E): una tecnica nueva en el mismo hueco
+## reutiliza el slot_id ya existente, no hace falta un timer por tecnica.
+var _slot_cooldowns: Dictionary = {}
+
+func _tick_cooldowns(delta: float) -> void:
+	for slot_id in _slot_cooldowns.keys():
+		_slot_cooldowns[slot_id] = max(_slot_cooldowns[slot_id] - delta, 0.0)
+
+func _cooldown_remaining(slot_id: String) -> float:
+	return _slot_cooldowns.get(slot_id, 0.0)
+
+func _start_cooldown(slot_id: String, duration: float) -> void:
+	_slot_cooldowns[slot_id] = duration
+
+# --- Chakra pasivo (T1) ----------------------------------------------------
+## Cada cuantos segundos el host retransmite el chakra ya regenerado a todos
+## los peers (ver comentario de chakra_current). No hace falta que sea muy
+## frecuente: entre sincronizaciones cada peer ya predice la misma formula
+## localmente (_predict_chakra_regen), esto solo corrige la deriva y
+## mantiene al dia el HUD de companeros de quien no es el host.
+const CHAKRA_REGEN_SYNC_INTERVAL := 0.5
+var _chakra_regen_sync_accum: float = 0.0
 
 # --- Proyectil (Fuego/Viento) / Agarre (Fisico) ---
 ## NodePath absoluto (get_path()) al enemigo agarrado, o vacio si ninguno.
@@ -260,8 +327,8 @@ var _zone_preview: Node2D = null
 ## Tecnica oculta de pergamino (H6): mantener R inmoviliza al jugador (ver
 ## _handle_movement) y captura hasta 3 pulsaciones direccionales. Soltar R
 ## antes de completar 3 cancela sin efecto. A diferencia de la Zona (que deja
-## moverse mientras se carga con Q), este es el "momento de riesgo" del
-## brief -- por eso bloquea movimiento, cosa que Zona no hace.
+## moverse mientras se carga con Mayus/Shift), este es el "momento de
+## riesgo" del brief -- por eso bloquea movimiento, cosa que Zona no hace.
 var _sellos_charging: bool = false
 var _sellos_directions: Array[String] = []
 const SELLOS_SECUENCIA_LONGITUD := 3
@@ -290,7 +357,7 @@ var _puertas_tiempo_abierto_total: float = 0.0
 var _vulnerabilidad_restante: float = 0.0
 var _vulnerabilidad_multiplicador: float = 1.0
 
-# --- Potenciador (E) -- recibido de un aliado, nunca de uno mismo ---
+# --- Potenciador (Ctrl, ver T2) -- recibido de un aliado, nunca de uno mismo ---
 ## "" = sin buff activo, o "fuego"/"viento" segun quien lo lanzo.
 var _potenciador_active_element: String = ""
 var _potenciador_time_remaining: float = 0.0
@@ -651,6 +718,18 @@ func _flash_damage_taken() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_status_bars()
+	# Cooldowns de ranura y regeneracion pasiva de chakra (T1): a proposito
+	# FUERA del bloque is_multiplayer_authority() de abajo -- corren para
+	# TODAS las copias de TODOS los Player en TODOS los peers (igual que
+	# _update_status_bars encima), porque el host necesita decaer/regenerar
+	# tambien su copia de los personajes de peers remotos (no solo la suya
+	# propia) para que submit_*() valide contra un estado al dia. Ver
+	# comentario de chakra_current y _slot_cooldowns.
+	_tick_cooldowns(delta)
+	if multiplayer.is_server():
+		_server_regen_chakra(delta)
+	else:
+		_predict_chakra_regen(delta)
 	if is_multiplayer_authority():
 		_process_screen_shake(delta)
 		_handle_debug_style_switch()
@@ -678,15 +757,21 @@ func _physics_process(delta: float) -> void:
 		_process_carry_hold()
 		if Input.is_action_just_pressed("attack_basic"):
 			_request_basic_attack()
-		if Input.is_action_just_pressed("attack_projectile"):
+		if Input.is_action_just_pressed("attack_projectile") and _cooldown_remaining("proyectil") <= 0.0:
 			if style_data.melee_only:
 				_request_grab()
 			else:
 				_request_projectile_attack()
 		if Input.is_action_just_pressed("impulse") and _impulse_cooldown_remaining <= 0.0 and _impulse_active_time <= 0.0:
 			_request_impulse()
-		if Input.is_action_just_pressed("potenciador") and not style_data.melee_only:
+		if Input.is_action_just_pressed("potenciador") and not style_data.melee_only and _cooldown_remaining("potenciador") <= 0.0:
 			_request_potenciador()
+		if Input.is_action_just_pressed("loadout_q") and _cooldown_remaining("loadout_q") <= 0.0:
+			_request_loadout_technique("Q")
+		if Input.is_action_just_pressed("loadout_e") and _cooldown_remaining("loadout_e") <= 0.0:
+			_request_loadout_technique("E")
+		if Input.is_action_just_pressed("soporte") and _cooldown_remaining("soporte") <= 0.0:
+			_request_soporte()
 		if Input.is_action_just_pressed("cargar_cadaver"):
 			_request_toggle_carry()
 		if Input.is_action_just_pressed("vender_cadaver"):
@@ -965,6 +1050,40 @@ func _handle_combo_timer(delta: float) -> void:
 		_combo_window_timer -= delta
 		if _combo_window_timer <= 0.0:
 			combo_count = 0
+
+## Formula compartida por la prediccion cosmetica (_predict_chakra_regen,
+## corre en TODOS los peers que no son el host para esta copia del nodo) y
+## el tick autoritativo (_server_regen_chakra, solo en el host) -- ver
+## comentario de chakra_current para el porque de la separacion.
+func _advance_chakra_regen(delta: float) -> float:
+	if style_data.chakra_max <= 0.0 or chakra_current >= style_data.chakra_max:
+		return chakra_current
+	return min(chakra_current + style_data.chakra_regen_per_second * delta, style_data.chakra_max)
+
+func _predict_chakra_regen(delta: float) -> void:
+	chakra_current = _advance_chakra_regen(delta)
+
+## Solo corre cuando multiplayer.is_server() es true, para la copia de CADA
+## Player del arbol del host (propio y de cualquier otro peer) -- a
+## proposito NO usa is_multiplayer_authority(), que en la maquina del host
+## solo seria true para su propio personaje. Ver comentario de chakra_current.
+func _server_regen_chakra(delta: float) -> void:
+	if style_data.chakra_max <= 0.0:
+		return # Fisico: sin chakra que regenerar ni que sincronizar
+	chakra_current = _advance_chakra_regen(delta)
+	_chakra_regen_sync_accum += delta
+	if _chakra_regen_sync_accum >= CHAKRA_REGEN_SYNC_INTERVAL:
+		_chakra_regen_sync_accum = 0.0
+		confirm_chakra_sync.rpc(chakra_current)
+
+## Correccion periodica del host -- aplica igual en todos los peers
+## (call_local), incluida la copia del propio host (no-op ahi, ya tenia ese
+## valor). Idempotente aunque llegue tarde o desordenado respecto a un
+## confirm_* de una accion de combate: siempre gana el ULTIMO valor recibido,
+## igual que el resto de confirm_* de este fichero.
+@rpc("any_peer", "call_local", "reliable")
+func confirm_chakra_sync(new_chakra: float) -> void:
+	chakra_current = new_chakra
 
 func _handle_vulnerability(delta: float) -> void:
 	if _vulnerabilidad_restante > 0.0:
@@ -1535,9 +1654,15 @@ func _request_basic_attack() -> void:
 
 ## Se ejecuta SOLO en el host (autoridad de la accion). Valida que quien
 ## pide el golpe es el dueno de este personaje, calcula el resultado
-## (combo + chakra recuperada + si toca soltar etiqueta + danio real a los
-## enemigos en el arco) y lo retransmite a todos los peers, incluido el que
-## lo pidio.
+## (combo + si toca soltar etiqueta + danio real a los enemigos en el arco)
+## y lo retransmite a todos los peers, incluido el que lo pidio.
+##
+## T1 (rework de combate 2026-09-03): el Basico YA NO recupera chakra --
+## chakra_current se regenera solo con el tiempo ahora (ver
+## _server_regen_chakra/_advance_chakra_regen), asi que este RPC dejo de
+## mandar un new_chakra. El Basico sigue siendo la UNICA ranura sin
+## cooldown propio -- a proposito, es lo que lo mantiene siempre disponible
+## mientras el resto de ranuras estan de cooldown (ver _slot_cooldowns).
 @rpc("any_peer", "call_local", "reliable")
 func submit_basic_attack(aim_point: Vector2) -> void:
 	if not multiplayer.is_server():
@@ -1549,8 +1674,6 @@ func submit_basic_attack(aim_point: Vector2) -> void:
 		return # alguien pidiendo un golpe con un personaje que no controla
 
 	var next_combo := (combo_count % 3) + 1
-	var recovered: float = style_data.chakra_recovered_per_hit
-	var new_chakra: float = min(chakra_current + recovered, style_data.chakra_max)
 	var spawn_tag := next_combo == 3
 
 	# Danio real del golpe -- la tanda anterior dejaba el Basico sin pegar a
@@ -1572,16 +1695,15 @@ func submit_basic_attack(aim_point: Vector2) -> void:
 		if enemigo.has_method("recibir_daño"):
 			enemigo.recibir_daño(damage_type, damage)
 
-	confirm_basic_attack.rpc(next_combo, new_chakra, spawn_tag, aim_point, not targets.is_empty())
+	confirm_basic_attack.rpc(next_combo, spawn_tag, aim_point, not targets.is_empty())
 
 ## Resultado confirmado por el host. Se aplica en todos los peers por igual.
 ## hit_occurred (nuevo, solo para el screen shake) es simplemente si el
-## cono encontro algun enemigo -- no cambia ningun calculo de daño/chakra,
-## solo se lee para disparar la sacudida de camara del propio atacante.
+## cono encontro algun enemigo -- no cambia ningun calculo de daño, solo se
+## lee para disparar la sacudida de camara del propio atacante.
 @rpc("any_peer", "call_local", "reliable")
-func confirm_basic_attack(combo_index: int, new_chakra: float, spawn_tag: bool, aim_point: Vector2, hit_occurred: bool) -> void:
+func confirm_basic_attack(combo_index: int, spawn_tag: bool, aim_point: Vector2, hit_occurred: bool) -> void:
 	combo_count = combo_index
-	chakra_current = new_chakra
 	_combo_window_timer = style_data.basic_combo_window
 	if spawn_tag:
 		_spawn_status_tag(aim_point)
@@ -1613,6 +1735,12 @@ func submit_projectile_attack(aim_point: Vector2) -> void:
 		return
 	if not _validate_sender():
 		return
+	# T1: cooldown propio de la ranura, ademas del coste de chakra que ya
+	# tenia -- ver comentario de _slot_cooldowns. El slot_id "proyectil" es
+	# compartido con el Agarre del Fisico (misma ranura, un estilo solo usa
+	# uno de los dos).
+	if _cooldown_remaining("proyectil") > 0.0:
+		return
 	if chakra_current < style_data.projectile_chakra_cost:
 		return # sin chakra suficiente, se ignora la peticion (sin penalizar)
 	var new_chakra: float = chakra_current - style_data.projectile_chakra_cost
@@ -1621,6 +1749,7 @@ func submit_projectile_attack(aim_point: Vector2) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_projectile_attack(new_chakra: float, aim_point: Vector2) -> void:
 	chakra_current = new_chakra
+	_start_cooldown("proyectil", style_data.projectile_cooldown)
 	var effects_root: Node = NetworkManager.effects_root
 	if effects_root == null:
 		return
@@ -1661,6 +1790,10 @@ func submit_grab_attempt() -> void:
 		return
 	if _get_grabbed_enemy() != null:
 		return # ya tiene algo agarrado
+	# T1: mismo slot_id "proyectil" que usa el Proyectil de los demas
+	# estilos -- es la misma ranura, solo que Fisico no paga chakra por ella.
+	if _cooldown_remaining("proyectil") > 0.0:
+		return
 	var facing_dir: Vector2 = Vector2.RIGHT.rotated(_torso.rotation)
 	var candidates := _find_enemies_in_cone(style_data.grab_range, style_data.grab_cone_degrees, facing_dir)
 	if candidates.is_empty():
@@ -1692,6 +1825,7 @@ func confirm_grab(path: NodePath, consume_potenciador: bool) -> void:
 		return
 	target.agarrado_por = self
 	grabbed_enemy_path = path
+	_start_cooldown("proyectil", style_data.grab_cooldown)
 	if consume_potenciador:
 		_potenciador_active_element = ""
 		_potenciador_caster_id = 0
@@ -1764,15 +1898,19 @@ func _process_carry_hold() -> void:
 		(node as Node2D).global_position = global_position + offset
 
 # =========================================================================
-# Zona (Fuego/Viento) -- mantener Q carga, soltar coloca.
+# Zona (Fuego/Viento) -- mantener Mayus/Shift carga, soltar coloca.
+# T2 (rework de combate 2026-09-03): esto vivia en Q -- Q paso a ser un
+# hueco de tecnica de loadout (ver mas abajo), la Zona/Lanzamiento se
+# reasigno a Mayus (accion "zone_cast", mismo nombre de accion de siempre,
+# solo cambia la tecla fisica -- ver project.godot).
 # =========================================================================
 
 func _handle_zone_input(delta: float) -> void:
 	if style_data.melee_only:
-		if Input.is_action_just_pressed("zone_cast") and _get_grabbed_enemy() != null:
+		if Input.is_action_just_pressed("zone_cast") and _get_grabbed_enemy() != null and _cooldown_remaining("zona") <= 0.0:
 			_request_throw(get_global_mouse_position())
 		return
-	if Input.is_action_just_pressed("zone_cast"):
+	if Input.is_action_just_pressed("zone_cast") and _cooldown_remaining("zona") <= 0.0:
 		_start_zone_charge()
 	if _zone_charging:
 		_zone_charge_time = min(_zone_charge_time + delta, style_data.zone_charge_time_max)
@@ -1810,6 +1948,10 @@ func submit_zone_cast(cast_pos: Vector2, charge_ratio: float) -> void:
 		return
 	if not _validate_sender():
 		return
+	# T1: cooldown propio de la ranura, ademas del coste de chakra que ya
+	# tenia. Slot_id "zona" compartido con el Lanzamiento del Fisico.
+	if _cooldown_remaining("zona") > 0.0:
+		return
 	# El host recalcula radio/coste desde el ratio de carga en vez de
 	# confiar en valores ya calculados por el cliente -- igual de barato,
 	# pero el cliente no puede mentir sobre cuanto pago.
@@ -1824,6 +1966,7 @@ func submit_zone_cast(cast_pos: Vector2, charge_ratio: float) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_zone_cast(new_chakra: float, cast_pos: Vector2, radius: float) -> void:
 	chakra_current = new_chakra
+	_start_cooldown("zona", style_data.zone_cooldown)
 	var effects_root: Node = NetworkManager.effects_root
 	if effects_root == null:
 		return
@@ -1847,7 +1990,8 @@ func confirm_zone_cast(new_chakra: float, cast_pos: Vector2, radius: float) -> v
 	zone.global_position = cast_pos
 
 # =========================================================================
-# Lanzamiento (solo Fisico, sustituye a la Zona) -- Q.
+# Lanzamiento (solo Fisico, sustituye a la Zona) -- misma tecla que Zona
+# (Mayus/Shift), ver comentario de la seccion Zona arriba.
 # =========================================================================
 
 func _request_throw(cursor_pos: Vector2) -> void:
@@ -1858,6 +2002,10 @@ func submit_throw(cursor_pos: Vector2) -> void:
 	if not multiplayer.is_server():
 		return
 	if not _validate_sender():
+		return
+	# T1: mismo slot_id "zona" que usa la Zona de los demas estilos -- misma
+	# ranura, el Fisico no paga chakra por ella.
+	if _cooldown_remaining("zona") > 0.0:
 		return
 	var target := _get_grabbed_enemy()
 	if target == null or not is_instance_valid(target):
@@ -1871,6 +2019,7 @@ func submit_throw(cursor_pos: Vector2) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_throw(path: NodePath, dir: Vector2) -> void:
 	grabbed_enemy_path = NodePath("")
+	_start_cooldown("zona", style_data.throw_cooldown)
 	var target := get_node_or_null(path) as EnemigoSimple
 	if target == null or not is_instance_valid(target):
 		return
@@ -1991,7 +2140,7 @@ func _spawn_impulse_trail(from_pos: Vector2, to_pos: Vector2) -> void:
 ## y captura hasta 3 pulsaciones direccionales; soltar R antes de completar 3
 ## cancela sin efecto.
 func _handle_sellos_input() -> void:
-	if Input.is_action_just_pressed("sellos") and not _zone_charging and _get_grabbed_enemy() == null:
+	if Input.is_action_just_pressed("sellos") and not _zone_charging and _get_grabbed_enemy() == null and _cooldown_remaining("sellos") <= 0.0:
 		_sellos_charging = true
 		_sellos_directions.clear()
 	if not _sellos_charging:
@@ -2031,6 +2180,10 @@ func submit_sellos_technique(secuencia: Array, aim_point: Vector2) -> void:
 		return
 	if secuencia.size() < SELLOS_SECUENCIA_LONGITUD:
 		return # secuencia incompleta o manipulada -- se ignora sin penalizar
+	# T1: cooldown propio de la ranura -- se aplica incluso en Fisico, que no
+	# paga chakra por su Sello (ver usa_chakra mas abajo).
+	if _cooldown_remaining("sellos") > 0.0:
+		return
 	# H6: la tecnica de Sellos ya no es gratis por tener el estilo equipado --
 	# hace falta haberla comprado en la Tienda de Pergaminos (ver
 	# NetworkManager.pergaminos_sellos_comprados, player.gd
@@ -2093,9 +2246,89 @@ func submit_sellos_technique(secuencia: Array, aim_point: Vector2) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_sellos_technique(new_chakra: float) -> void:
 	chakra_current = new_chakra
+	_start_cooldown("sellos", style_data.sellos_cooldown)
 	if style_data.element_name == "agua":
 		vida_actual = min(vida_actual + style_data.sellos_agua_self_heal, style_data.vida_maxima)
 	trigger_hit_shake(SCREEN_SHAKE_ATTACK_STRENGTH * 1.5)
+
+# =========================================================================
+# Loadout Q/E -- T2 (rework de combate 2026-09-03). Dos huecos de tecnica
+# equipable por estilo (sustituyen a Zona/Potenciador en estas dos teclas,
+# reasignadas a Mayus/Ctrl, ver las secciones de arriba). Cada estilo trae
+# de fabrica UNA tecnica por hueco ("factory"): Q es un golpe unico en cono
+# (como el Basico, mas fuerte); E es un estallido de area alrededor del
+# propio jugador. Todos los estilos, incluido Fisico, tienen las dos (Fisico
+# sin coste de chakra, igual que el Agarre/Lanzamiento/Sellos-fisico).
+#
+# Punto de extension para T4 (pool de tecnicas de pergamino, fuera de esta
+# tanda): _equipped_loadout_technique() ya resuelve la tecnica activa de
+# cada hueco por id en vez de tener el efecto fijo -- hoy solo existe
+# "factory" (rama _:  en el match de abajo), T4 solo necesita anadir mas
+# ids al match y un flujo en la Tienda de Pergaminos (T5, casino-agent) que
+# escriba en NetworkManager.loadout_equipped.
+# =========================================================================
+
+## "factory" hasta que exista T4 -- ver NetworkManager.loadout_equipped.
+func _equipped_loadout_technique(slot: String) -> String:
+	var peer_id := get_multiplayer_authority()
+	var equipped: Dictionary = NetworkManager.loadout_equipped.get(peer_id, {})
+	return equipped.get(slot, "factory")
+
+func _request_loadout_technique(slot: String) -> void:
+	var aim_point := get_global_mouse_position()
+	submit_loadout_technique.rpc_id(1, slot, aim_point)
+
+@rpc("any_peer", "call_local", "reliable")
+func submit_loadout_technique(slot: String, aim_point: Vector2) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if slot != "Q" and slot != "E":
+		return # peticion manipulada -- solo existen estos dos huecos
+	var slot_id := "loadout_q" if slot == "Q" else "loadout_e"
+	if _cooldown_remaining(slot_id) > 0.0:
+		return
+	var cost: float = style_data.loadout_q_chakra_cost if slot == "Q" else style_data.loadout_e_chakra_cost
+	var cooldown: float = style_data.loadout_q_cooldown if slot == "Q" else style_data.loadout_e_cooldown
+	var usa_chakra: bool = style_data.chakra_max > 0.0
+	if usa_chakra and chakra_current < cost:
+		return
+	var new_chakra: float = chakra_current - cost if usa_chakra else chakra_current
+	var damage_type := _basic_damage_type()
+	var mult: float = _current_damage_multiplier()
+	var hit_occurred := false
+	match _equipped_loadout_technique(slot):
+		"factory":
+			if slot == "Q":
+				var facing_dir: Vector2 = aim_point - global_position
+				if facing_dir.length() < 0.001:
+					facing_dir = Vector2.RIGHT.rotated(_torso.rotation)
+				facing_dir = facing_dir.normalized()
+				var damage: float = style_data.loadout_q_damage * mult
+				for enemigo in _find_enemies_in_cone(style_data.loadout_q_range, style_data.loadout_q_cone_degrees, facing_dir):
+					hit_occurred = true
+					if enemigo.has_method("recibir_daño"):
+						enemigo.recibir_daño(damage_type, damage)
+			else:
+				var damage: float = style_data.loadout_e_damage * mult
+				for enemigo in get_tree().get_nodes_in_group(GRUPO_ENEMIGOS):
+					if not (enemigo is Node2D):
+						continue
+					if global_position.distance_to(enemigo.global_position) <= style_data.loadout_e_radius:
+						hit_occurred = true
+						if enemigo.has_method("recibir_daño"):
+							enemigo.recibir_daño(damage_type, damage)
+		_:
+			return # id de tecnica desconocido -- no deberia pasar hasta T4
+	confirm_loadout_technique.rpc(slot_id, new_chakra, cooldown, hit_occurred)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_loadout_technique(slot_id: String, new_chakra: float, cooldown: float, hit_occurred: bool) -> void:
+	chakra_current = new_chakra
+	_start_cooldown(slot_id, cooldown)
+	if hit_occurred:
+		trigger_hit_shake()
 
 # =========================================================================
 # Puertas (solo Fisico) -- mantener F.
@@ -2181,9 +2414,13 @@ func _update_vulnerability_visual() -> void:
 	_vulnerability_indicator.visible = _vulnerabilidad_restante > 0.0
 
 # =========================================================================
-# Potenciador -- E. Se lanza sobre un aliado, nunca sobre uno mismo. Solo
-# Fuego/Viento tienen chakra para lanzarlo (Fisico no tiene Potenciador
-# propio, brief 2.1); Fisico si puede RECIBIRLO -- ver bonus en Agarre.
+# Potenciador -- Ctrl (T2, rework de combate 2026-09-03: vivia en E, que
+# paso a ser un hueco de tecnica de loadout, ver mas abajo). Se lanza sobre
+# un aliado, NUNCA sobre uno mismo -- regla invariante de esta ranura en
+# concreto (no la comparte la ranura de Soporte nueva de T3). Solo Fuego/
+# Viento/Agua/Rayo/Tierra tienen chakra para lanzarlo (Fisico no tiene
+# Potenciador propio, brief 2.1); Fisico si puede RECIBIRLO -- ver bonus en
+# Agarre.
 # =========================================================================
 
 func _request_potenciador() -> void:
@@ -2200,8 +2437,14 @@ func submit_potenciador() -> void:
 		return
 	if style_data.melee_only:
 		return
+	# T1: cooldown propio de la ranura. Sin mensaje de fallo especifico (a
+	# diferencia de chakra/cono vacios de abajo) -- un intento en cooldown ya
+	# tiene su propia señal clara en pantalla (el hueco no responde), igual
+	# que el resto de ranuras de esta tanda.
+	if _cooldown_remaining("potenciador") > 0.0:
+		return
 	if chakra_current < style_data.potenciador_chakra_cost:
-		# Mismo problema que el cono vacio de abajo: sin aviso, un E sin
+		# Mismo problema que el cono vacio de abajo: sin aviso, un intento sin
 		# chakra suficiente es indistinguible de "esta roto".
 		confirm_potenciador_failed.rpc("chakra insuficiente")
 		return
@@ -2248,6 +2491,7 @@ func submit_potenciador() -> void:
 @rpc("any_peer", "call_local", "reliable")
 func confirm_potenciador_cast(new_chakra: float) -> void:
 	chakra_current = new_chakra
+	_start_cooldown("potenciador", style_data.potenciador_cooldown)
 
 ## Aviso de fallo al que pidio el Potenciador: sin chakra suficiente o sin
 ## ningun aliado en el cono. Se manda desde el host sobre el propio nodo del
@@ -2319,6 +2563,63 @@ func _start_potenciador_dash(caster_pos: Vector2, distance: float, travel_time: 
 @rpc("any_peer", "call_local", "reliable")
 func confirm_potenciador_chakra_return(new_chakra: float) -> void:
 	chakra_current = new_chakra
+
+# =========================================================================
+# Soporte -- F15 (T3, ranura nueva del rework de combate 2026-09-03: F1-F14
+# ya estaban ocupadas, ver project.godot). Cura/escudo/efecto NO ofensivo --
+# a diferencia del Potenciador de arriba, esta ranura SI puede afectar a
+# quien la lanza: si hay un aliado en el cono de apuntado se aplica a el, si
+# no hay nadie se aplica a uno mismo. Gasta el mismo chakra pasivo de
+# siempre, no crea un recurso nuevo. Solo una tecnica de fabrica por estilo
+# (cura); dar a elegir entre varias es el mismo T4 de Loadout Q/E.
+# =========================================================================
+
+func _request_soporte() -> void:
+	var facing_dir: Vector2 = Vector2.RIGHT.rotated(_torso.rotation)
+	submit_soporte.rpc_id(1, facing_dir)
+
+## El host busca el aliado mas cercano en el cono de apuntado, igual que el
+## Potenciador/Agarre; si no hay ninguno, el objetivo pasa a ser uno mismo
+## -- unica ranura del kit que puede hacer esto (ver cabecera de esta
+## seccion).
+@rpc("any_peer", "call_local", "reliable")
+func submit_soporte(facing_dir: Vector2) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if _cooldown_remaining("soporte") > 0.0:
+		return
+	var usa_chakra: bool = style_data.chakra_max > 0.0
+	if usa_chakra and chakra_current < style_data.soporte_chakra_cost:
+		return
+	var new_chakra: float = chakra_current - style_data.soporte_chakra_cost if usa_chakra else chakra_current
+	var candidates := _find_allies_in_cone(style_data.soporte_range, style_data.soporte_cone_degrees, facing_dir)
+	var target: Node = self
+	if not candidates.is_empty():
+		var best: Node2D = candidates[0]
+		var best_dist: float = global_position.distance_to(best.global_position)
+		for c in candidates:
+			var d: float = global_position.distance_to(c.global_position)
+			if d < best_dist:
+				best_dist = d
+				best = c
+		target = best
+	confirm_soporte_cast.rpc(new_chakra)
+	# RPC sobre el nodo objetivo (self o un aliado) -- mismo truco que ya usa
+	# el Potenciador para aplicar el resultado donde toca, aunque aqui el
+	# objetivo pueda ser el propio nodo que emite el RPC.
+	target.confirm_soporte_received.rpc(style_data.soporte_heal_amount)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_soporte_cast(new_chakra: float) -> void:
+	chakra_current = new_chakra
+	_start_cooldown("soporte", style_data.soporte_cooldown)
+
+## Se ejecuta en el jugador OBJETIVO (self o un aliado, ver submit_soporte).
+@rpc("any_peer", "call_local", "reliable")
+func confirm_soporte_received(heal_amount: float) -> void:
+	vida_actual = min(vida_actual + heal_amount, style_data.vida_maxima)
 
 # =========================================================================
 # Vida / danio entrante.

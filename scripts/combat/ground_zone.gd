@@ -1,6 +1,7 @@
 extends Area2D
 class_name GroundZone
-## Efecto de Zona colocado en el suelo (tecla Q) o generado por una
+## Efecto de Zona colocado en el suelo (tecla Mayus/Shift, reasignada desde
+## Q en el rework de combate 2026-09-03 -- ver player.gd) o generado por una
 ## combinacion de suelo. Siempre plano/visto desde arriba: este juego ya es
 ## top-down por defecto, asi que la restriccion de "sin perspectiva" del
 ## plan se cumple sin nada especial.

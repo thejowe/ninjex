@@ -22,11 +22,26 @@ class_name StyleData
 @export var melee_only: bool = false
 
 @export_group("Chakra")
-## Chakra maximo del estilo. El chakra NUNCA se recupera con el tiempo,
-## solo golpeando con el Basico (ver player.gd). En Fisico se deja a 0.
+## Chakra maximo del estilo. En Fisico se deja a 0 (no usa Proyectil/Zona/
+## Potenciador/Loadout Q-E/Soporte -- Agarre/Lanzamiento/Puertas/Sellos-fisico
+## siguen gratis).
 @export var chakra_max: float = 100.0
-## Chakra recuperado por cada golpe conectado del Basico.
+## DEPRECADO (rework de combate 2026-09-03, plan-desarrollo.md seccion 2.1
+## T1): hasta esta tanda el chakra SOLO se recuperaba golpeando con el
+## Basico, nunca con el tiempo -- la regla mas repetida del diseno original
+## (diseno-juego-ninja.md, brief-traspaso-claude-code.md). El usuario pidio
+## explicitamente sustituirla por regeneracion pasiva (ver
+## chakra_regen_per_second abajo); se documenta aqui, no se borra el campo,
+## para no tener que tocar los 6 .tres que todavia lo declaran -- ya no lo
+## lee ningun submit_*/confirm_* de player.gd.
 @export var chakra_recovered_per_hit: float = 12.0
+## Chakra recuperado por segundo, todo el rato, sin necesidad de golpear con
+## nada (T1). Es el reemplazo directo de chakra_recovered_per_hit de arriba.
+## Con esto, lo que obliga a volver al Basico entre usos de una ranura ya no
+## es "necesito chakra", es el cooldown propio de cada ranura (ver los
+## grupos de abajo) -- el Basico sigue siendo la UNICA ranura sin cooldown.
+## Se ignora si chakra_max <= 0 (Fisico).
+@export var chakra_regen_per_second: float = 10.0
 
 @export_group("Basico")
 @export var basic_damage: float = 8.0
@@ -46,6 +61,11 @@ class_name StyleData
 @export_group("Proyectil")
 ## Coste de chakra para lanzar un Proyectil. No se usa si melee_only.
 @export var projectile_chakra_cost: float = 15.0
+## Cooldown propio de la ranura (T1, rework de combate 2026-09-03): sin
+## esto, con el chakra ya regenerandose solo por tiempo, nada obligaria a
+## volver al Basico entre Proyectiles -- ver comentario de
+## chakra_regen_per_second arriba.
+@export var projectile_cooldown: float = 2.5
 @export var projectile_speed: float = 520.0
 @export var projectile_damage: float = 14.0
 @export var projectile_max_distance: float = 650.0
@@ -64,6 +84,12 @@ class_name StyleData
 @export var grab_hold_offset: float = 40.0
 ## Si no se lanza antes de esto, el agarre se suelta solo.
 @export var grab_hold_duration: float = 3.5
+## Cooldown propio de la ranura (T1): Fisico no paga chakra por el Agarre,
+## pero sigue necesitando algo que le impida re-agarrar sin limite -- mismo
+## rol que projectile_cooldown para el resto de estilos (misma ranura, otro
+## nombre de campo porque vive en su propio export_group, igual que el resto
+## de Agarre/Lanzamiento frente a Proyectil/Zona).
+@export var grab_cooldown: float = 2.0
 
 @export_group("Zona")
 ## Cargar Q mas tiempo sube radio y coste linealmente hasta estos maximos.
@@ -84,11 +110,16 @@ class_name StyleData
 ## en vez de daño/empuje. Ver GroundZone._apply_slow() y
 ## EnemigoSimple.slow_multiplier.
 @export var zone_slow_factor: float = 1.0
+## Cooldown propio de la ranura (T1), ademas del coste de chakra que ya
+## tenia -- ver comentario de projectile_cooldown arriba, mismo motivo.
+@export var zone_cooldown: float = 3.0
 
 @export_group("Lanzamiento (solo Fisico)")
 ## Sustituye a la Zona: tira al enemigo agarrado hacia el cursor.
 @export var throw_speed: float = 900.0
 @export var throw_damage: float = 20.0
+## Cooldown propio de la ranura (T1) -- mismo motivo que grab_cooldown.
+@export var throw_cooldown: float = 2.0
 
 @export_group("Impulso")
 @export var impulse_cooldown: float = 3.0
@@ -141,6 +172,10 @@ class_name StyleData
 ## Coste de chakra para lanzarlo. No se usa si melee_only (el Fisico no
 ## tiene Potenciador propio, ver brief 2.1).
 @export var potenciador_chakra_cost: float = 25.0
+## Cooldown propio de la ranura (T1) -- ver comentario de projectile_cooldown
+## arriba, mismo motivo. Sin uso si melee_only (Fisico no tiene Potenciador
+## propio).
+@export var potenciador_cooldown: float = 5.0
 ## Alcance y semiangulo (grados) del cono frente al jugador para elegir el
 ## aliado mas cercano al que lanzarlo. Mismo patron que grab_range/cone.
 @export var potenciador_range: float = 110.0
@@ -180,6 +215,11 @@ class_name StyleData
 ## chakra_max = 0) -- el Fisico saca su Sello gratis, igual que no paga por
 ## el Agarre/Lanzamiento.
 @export var sellos_chakra_cost: float = 40.0
+## Cooldown propio de la ranura (T1) -- ver comentario de projectile_cooldown
+## arriba. Se aplica siempre, incluido Fisico (que no paga chakra pero sigue
+## necesitando algo que evite repetirlo sin limite -- mismo criterio que
+## grab_cooldown/throw_cooldown).
+@export var sellos_cooldown: float = 8.0
 ## Radio de la tecnica (area alrededor del jugador al completar la
 ## secuencia). No se usa en Fisico, que apunta en cono como el
 ## Basico/Agarre en vez de area -- ver sellos_fisico_* abajo.
@@ -202,6 +242,54 @@ class_name StyleData
 @export var sellos_fisico_range: float = 100.0
 @export var sellos_fisico_cone_degrees: float = 90.0
 @export var sellos_fisico_damage: float = 55.0
+
+@export_group("Loadout Q")
+## Rework de combate 2026-09-03 (plan-desarrollo.md seccion 2.1, T2): la
+## tecla Q deja de ser la Zona fija (movida a Mayus/Shift, ver project.godot)
+## y pasa a ser un hueco de tecnica equipable por estilo. Golpe unico en cono
+## como el Basico, mas fuerte, con su propio coste de chakra y cooldown --
+## esta es la tecnica de FABRICA de este hueco (T2: "al menos una tecnica
+## inicial ademas del Sellos ya existente"). El pool de tecnicas comprables
+## que se puedan equipar aqui es T4 (fuera de esta tanda) -- ver
+## NetworkManager.loadout_equipped para el punto de extension: player.gd
+## resuelve la tecnica activa por id ("factory" es la unica que existe hoy)
+## en vez de tener el efecto fijo siempre, para que T4 no tenga que tocar la
+## ranura en si.
+@export var loadout_q_name: String = "Golpe cargado (placeholder)"
+## Se ignora si el estilo no usa chakra (melee_only).
+@export var loadout_q_chakra_cost: float = 20.0
+@export var loadout_q_cooldown: float = 3.5
+@export var loadout_q_range: float = 90.0
+@export var loadout_q_cone_degrees: float = 70.0
+@export var loadout_q_damage: float = 16.0
+
+@export_group("Loadout E")
+## Mismo mecanismo que Loadout Q de arriba, hueco independiente (la tecla E
+## deja de ser el Potenciador fijo, movido a Ctrl). A diferencia de Q (cono,
+## un solo golpe fuerte), la tecnica de fabrica de E es un estallido de area
+## alrededor del propio jugador -- variedad de forma entre los dos huecos,
+## no solo de numeros.
+@export var loadout_e_name: String = "Onda de impacto (placeholder)"
+@export var loadout_e_chakra_cost: float = 25.0
+@export var loadout_e_cooldown: float = 5.0
+@export var loadout_e_radius: float = 90.0
+@export var loadout_e_damage: float = 12.0
+
+@export_group("Soporte")
+## Ranura nueva (T3, tecla F15 -- ver project.godot, F1-F14 ya estaban
+## ocupadas). Cura/escudo/efecto NO ofensivo -- a diferencia del Potenciador,
+## esta ranura SI puede afectar a quien la lanza: si hay un aliado en el cono
+## de apuntado se cura a el, si no hay nadie en el cono se cura a si mismo
+## (ver player.gd submit_soporte). Gasta el mismo chakra pasivo de arriba, no
+## crea un recurso nuevo. Igual que el resto de ranuras nuevas de esta tanda,
+## exactamente UNA tecnica de fabrica por estilo -- variarla o dar a elegir
+## entre varias es fuera de alcance (mismo T4 de Loadout Q/E de arriba).
+@export var soporte_name: String = "Apoyo de campo (placeholder)"
+@export var soporte_chakra_cost: float = 25.0
+@export var soporte_cooldown: float = 6.0
+@export var soporte_heal_amount: float = 25.0
+@export var soporte_range: float = 120.0
+@export var soporte_cone_degrees: float = 60.0
 
 @export_group("Vida")
 @export var vida_maxima: float = 100.0
