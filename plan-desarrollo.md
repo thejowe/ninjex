@@ -74,6 +74,12 @@ Interiores construidos, uno por tienda, en `scenes/world/interiors/` (`forja_int
 
 **Aviso de tecla al acercarse a un punto de interacción** y varios **fixes de red/colisión** (jugador spawneaba en la esquina, dash atravesaba paredes, daño no se sincronizaba al segundo jugador, host nunca arrancaba el servidor) ya están hechos — no son tareas pendientes.
 
+### Infraestructura fuera de hitos (scope nuevo, no en `brief-traspaso-claude-code.md` ni `diseno-juego-ninja.md` originales — detectado en `git log` el 2026-09-03, no estaba documentado en este archivo)
+
+**Pantalla de inicio, lobby y transporte Steam P2P** (commit `59d75d3`, agente: `netcode-agent`): antes del prólogo/selección de estilo existente se añadió un título (Jugar/Salir) y un lobby (crear/unirse sala, lista de jugadores en vivo, invitar amigos por overlay de Steam) — `scenes/ui/menu_inicio.tscn`, `scenes/ui/lobby.tscn`. El transporte de red migró de **ENet por IP a Steam P2P** (`addons/godotsteam/`, App ID de test 480), manteniendo intacto el modelo host-autoritativo `submit_*`/`confirm_*` ya usado en el resto de `NetworkManager`. Esto no cambia ningún hito ni criterio de "hecho": es la capa de conexión, no una mecánica de juego.
+
+**Pase de dureza de red: caída del host, reconexión y late-join** (commit `416d78c`, agente: `netcode-agent`): auditoría del sistema de interiores nuevo (H5+) que corrigió dos huecos — un cliente dentro de una misión o tienda se quedaba congelado si el host caía (ahora `NetworkManager.host_disconnected` + `main.gd` recargan la escena y vuelven al menú), y un peer que se unía tarde o se reconectaba mientras el grupo ya estaba dentro de una misión/interior no recibía ese estado (nuevo `_sync_new_peer()`/`confirm_sync_mision_a_peer()`/`confirm_sync_interior_a_peer()`). También endurece `confirm_iniciar_mision` para rechazar si ya hay un interior activo, mismo criterio que ya tenía `confirm_entrar_tienda` en sentido inverso.
+
 ---
 
 ## 2. Qué queda por hacer de verdad (código) — todolist real
@@ -90,6 +96,8 @@ Interiores construidos, uno por tienda, en `scenes/world/interiors/` (`forja_int
 - [x] **Historia y diálogos de NPCs** (H6, al final): tabernera, viejo maestro, usurero, pescador, con una línea nueva por misión completada. Agente: `narrative-agent`.
 - [x] **Extras de taberna**: música diegética, emotes, sillas, pizarra de deudas y récords. Agente: `hub-agent`.
 - [x] **Desglose de contribución de la Taberna**: quedó bloqueado en H5 por falta del concepto de misión — ya existe, se puede reenganchar. Baja prioridad. Agente: `hub-agent`.
+- [x] **Pantalla de inicio, lobby y transporte Steam P2P** (scope nuevo, detectado en `git log` sin documentar — ver nota en sección 1): título, lobby con invitación por overlay de Steam, migración de ENet a Steam P2P sin tocar el modelo host-autoritativo. Agente: `netcode-agent`.
+- [x] **Pase de dureza de red: caída del host, reconexión y late-join** (scope nuevo, detectado en `git log` sin documentar — ver nota en sección 1): resincronización de peers tardíos/reconectados dentro de misiones e interiores, recarga a menú si el host cae en pleno interior/misión. Agente: `netcode-agent`.
 - [x] **Interiores de tienda con fundido a negro** (H5+, scope nuevo pedido por el usuario el 2026-09-02, ver nota en sección 1 H5 y `plan-assets.md` sección 8): sistema genérico reusable (`FadeTransition` autoload + `NetworkManager.confirm_entrar_tienda`/`confirm_salir_tienda`, mismo patrón que Misiones) y 6 escenas de interior con mood propio (Forja, Herboristería, Mercado negro, Sastrería, Casa del equipo, Taberna). Casino deliberadamente fuera de esta pasada (sigue en `test_room`, coordinación pendiente con `casino-agent` — ver nota en sección 1). Agente: `hub-agent`.
 
 No se retoma la votación de bóveda ni el Modo Mesa Alta salvo que el usuario lo pida explícitamente — esa sí es una decisión de diseño confirmada, no scope pendiente.
