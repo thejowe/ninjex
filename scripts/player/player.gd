@@ -1098,8 +1098,35 @@ func _server_regen_chakra(delta: float) -> void:
 ## valor). Idempotente aunque llegue tarde o desordenado respecto a un
 ## confirm_* de una accion de combate: siempre gana el ULTIMO valor recibido,
 ## igual que el resto de confirm_* de este fichero.
+##
+## T6 (auditoria de red, netcode-agent, 2026-09-03): a diferencia de todos
+## los submit_*() de este fichero (que validan con _validate_sender() que
+## quien pide la accion es el dueno del personaje), este confirm_* no tenia
+## NINGUNA validacion de quien lo llama -- al ser @rpc("any_peer", ...), un
+## cliente modificado podia invocar confirm_chakra_sync.rpc(valor_falso)
+## directamente sobre CUALQUIER nodo Player (el suyo o el de otro jugador) y
+## esa llamada le llegaria tal cual a la copia autoritativa del host (que
+## para el host es la unica que de verdad importa, ver comentario de
+## chakra_current), forjando chakra ilimitado sin pasar por ningun submit_*
+## ni gastar nada. Fix: el host ignora cualquier confirm_chakra_sync que le
+## llegue (su propio _server_regen_chakra ya es la fuente de verdad, asi que
+## una copia -real o falsificada- nunca deberia pisarla) y el resto de peers
+## solo aceptan el valor si el remitente es el host (peer 1).
+##
+## Nota para una pasada futura si el scope crece: el resto de confirm_*
+## de este fichero comparten el mismo patron sin validar (se confia en que
+## solo el host los llama via .rpc() tras su propio submit_*), asi que en
+## teoria son igual de falsificables por un cliente modificado. Se deja
+## fuera de esta auditoria (T6 solo cubre el recurso nuevo de T1) para no
+## reescribir player.gd entero -- si se decide endurecer, el mismo patron de
+## abajo (chequear multiplayer.get_remote_sender_id() == 1) sirve para todos.
 @rpc("any_peer", "call_local", "reliable")
 func confirm_chakra_sync(new_chakra: float) -> void:
+	if multiplayer.is_server():
+		return # el host ya tiene el valor real, no se deja pisar ni por si mismo
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id != 1:
+		return # alguien que no es el host intentando forjar el chakra
 	chakra_current = new_chakra
 
 func _handle_vulnerability(delta: float) -> void:
