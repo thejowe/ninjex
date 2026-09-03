@@ -102,6 +102,36 @@ Interiores construidos, uno por tienda, en `scenes/world/interiors/` (`forja_int
 
 No se retoma la votación de bóveda ni el Modo Mesa Alta salvo que el usuario lo pida explícitamente — esa sí es una decisión de diseño confirmada, no scope pendiente.
 
+### 2.1 Rework de combate pedido por el usuario el 2026-09-03 (nuevo, no estaba en `brief-traspaso-claude-code.md` ni `diseno-juego-ninja.md` originales)
+
+**Choca con reglas invariantes ya cerradas del diseño — ver diagnóstico completo entregado por `pilar-agent` en la sesión de hoy.** Resumen de los choques más importantes:
+- **Chakra pasivo por tiempo**: contradice directamente "el chakra se recupera golpeando con el Básico, nunca con el tiempo" — la regla más repetida del diseño (`diseno-juego-ninja.md` sección 1, `brief-traspaso-claude-code.md` sección 2.1, `.claude/agents/combat-agent.md`). El usuario lo pidió explícitamente, así que se trata como **decisión consciente de sustituir la regla**, no como omisión — queda documentado aquí para que no se lea como un bug futuro.
+- **Cooldown por ranura**: cambia el rol del Básico (de "generador de chakra" a "la única ranura sin cooldown"), interactúa con la ventana de combo de 0,6 s, la ventana de etiqueta de 1,5 s y la ventana de sincronización de red de ~0,5 s + RTT de las combinaciones.
+- **Q/E personalizados por estilo**: hoy Q y E son ranuras fijas del esquema universal (Zona y Potenciador), iguales para los 6 estilos por diseño ("cada estilo tiene exactamente cinco cosas"). Aviso técnico: **todas** las teclas A-Z y 0-9 en `project.godot` ya están asignadas a alguna acción — no hay ninguna letra libre para una ranura nueva.
+- **Sustitución de ataque al comprar pergamino**: hoy la Tienda de Pergaminos desbloquea de forma incondicional la única técnica Sellos fija por estilo (`style_data.sellos_technique_name`) — no existe ni un pool de técnicas por estilo ni un concepto de "ranura ya equipada" que sustituir.
+
+**Supuestos de trabajo de esta pasada (recomendación de `pilar-agent`, pendiente de confirmación del usuario si prefiere otra interpretación):**
+
+| Punto ambiguo | Supuesto de trabajo |
+|---|---|
+| Qué son exactamente Q/E "personalizados" | Q y E pasan a ser 2 huecos de loadout por estilo (uno cada uno), cada uno con una técnica equipada de un pool de técnicas aprendibles del estilo. Sustituye conceptualmente al Sellos-único-en-R actual. |
+| A qué sustituye la compra de un pergamino | A la técnica que hoy ocupe el hueco Q o E que el jugador elija sustituir en el momento de la compra (no automático). |
+| A quién afecta la ranura de Soporte nueva | Puede targetear a uno mismo o a un aliado según la técnica (no hereda la restricción de "nunca a uno mismo" del Potenciador — esa regla es exclusiva de esa ranura). |
+| Qué recurso gasta la ranura de Soporte | El mismo chakra (ya pasivo), para no crear un cuarto recurso. |
+| Tecla de la ranura de Soporte | Una tecla de función libre (F1-F9, F13, F15+; F10-F12 y F14 ya están en uso) — decisión final la toma `combat-agent` al implementar. |
+| Chakra pasivo: ¿reemplaza del todo el golpe-recupera-chakra del Básico, o convive? | Reemplaza del todo, tal y como se pidió literalmente. `pilar-agent` recomienda evaluar en playtest si conviene mantener un bonus extra de chakra al golpear con Básico encima del pasivo (opción B), pero no es lo pedido — se implementa la opción A (reemplazo total) salvo que el usuario diga lo contrario. |
+
+**Tareas (orden de ejecución — casi todas comparten `scripts/player/player.gd`/`scripts/styles/style_data.gd`/`project.godot`, así que se hacen en serie, no en paralelo, salvo la excepción marcada):**
+
+- [ ] **T1 — Recurso de combate: chakra pasivo + cooldown por ranura** (`combat-agent`, primero, nada más depende de nada existente). Chakra pasa de recuperarse solo golpeando con Básico a regenerarse pasivamente por tiempo; cada ranura (Proyectil, Zona, Impulso, Potenciador, Sellos/Q/E cuando existan) gana un cooldown propio que obliga a volver al Básico (sin cooldown) entre usos. Mismo patrón host-autoritativo `submit_*`/`confirm_*` ya usado para chakra.
+- [ ] **T2 — Ranuras Q/E de loadout por estilo** (`combat-agent`, depende de T1). Q y E dejan de ser Zona/Potenciador fijos (esas ranuras se reasignan a otras teclas) y pasan a ser 2 huecos de técnica equipable por estilo, con al menos una técnica inicial de fábrica por hueco además del Sellos ya existente.
+- [ ] **T3 — Ranura de Soporte nueva** (`combat-agent`, depende de T1, misma sesión que T2 recomendable por solapar archivos). Tecla de función libre, cura/escudo/efecto no ofensivo, uno mismo o aliado según técnica, gasta chakra.
+- [ ] **T4 — Pool de técnicas de pergamino por estilo** (`combat-agent`, depende de T2). Cada estilo pasa de tener una única técnica Sellos comprable a tener varias técnicas aprendibles asignables a los huecos Q/E de T2.
+- [ ] **T5 — Flujo de compra con sustitución en la Tienda de Pergaminos** (`casino-agent`, depende de T4 commiteado). Comprar ya no desbloquea sin más: pide elegir qué técnica equipada (Q o E) se sustituye por la nueva.
+- [ ] **T6 — Auditoría de red del nuevo recurso** (`netcode-agent`, depende de T1 commiteado; **puede ir en paralelo con T2/T3** porque es mayormente revisión/lectura sobre `network_manager.gd` con ediciones acotadas, no una reescritura de `player.gd`). Confirmar que la regeneración pasiva y los cooldowns son autoritativos en host y no explotables por un cliente modificado, y si hace falta un tick periódico de sync para que el chakra de los compañeros en el HUD no se vea desfasado entre eventos.
+
+Agente principal: `combat-agent` (T1-T4). Reparto: `casino-agent` (T5), `netcode-agent` (T6, auditoría).
+
 **Sobre el arte:** deliberadamente no está en esta lista. El trabajo de assets tiene su propio plan (`plan-assets.md`) y su propio checklist de progreso (`assets-progreso.md`), gestionado por `arte-pilar-agent` — un sistema de seguimiento completamente aparte, para que ninguno de los dos equipos bloquee al otro. La única conexión es que `arte-pilar-agent` lee (nunca edita) la sección 1 de este documento para saber qué hitos de código ya están validados.
 
 ---
