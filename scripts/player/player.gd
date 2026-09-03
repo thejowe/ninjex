@@ -2374,11 +2374,16 @@ func submit_loadout_technique(slot: String, aim_point: Vector2) -> void:
 	var damage_type := _basic_damage_type()
 	var final_damage: float = damage * _current_damage_multiplier()
 	var hit_occurred := false
+	# facing_dir se calcula SIEMPRE (no solo para "cone"): shape=="area" no lo
+	# necesita para el golpe (adrede -- E golpea a cualquier enemigo dentro
+	# del radio alrededor del jugador, sin depender de hacia donde apunte el
+	# cursor, confirmado con test dirigido antes de este fix), pero el FX de
+	# feedback de abajo lo usa igual para orientar el cono cuando shape=="cone".
+	var facing_dir: Vector2 = aim_point - global_position
+	if facing_dir.length() < 0.001:
+		facing_dir = Vector2.RIGHT.rotated(_torso.rotation)
+	facing_dir = facing_dir.normalized()
 	if shape == "cone":
-		var facing_dir: Vector2 = aim_point - global_position
-		if facing_dir.length() < 0.001:
-			facing_dir = Vector2.RIGHT.rotated(_torso.rotation)
-		facing_dir = facing_dir.normalized()
 		for enemigo in _find_enemies_in_cone(hit_range, cone_degrees, facing_dir):
 			hit_occurred = true
 			if enemigo.has_method("recibir_daño"):
@@ -2391,14 +2396,40 @@ func submit_loadout_technique(slot: String, aim_point: Vector2) -> void:
 				hit_occurred = true
 				if enemigo.has_method("recibir_daño"):
 					enemigo.recibir_daño(damage_type, final_damage)
-	confirm_loadout_technique.rpc(slot_id, new_chakra, cooldown, hit_occurred)
+	var shape_size: float = hit_range if shape == "cone" else radius
+	confirm_loadout_technique.rpc(slot_id, new_chakra, cooldown, hit_occurred, shape, facing_dir, shape_size, cone_degrees)
 
+## Bug de playtest 2026-09-03 (ver nota en submit_loadout_technique): antes
+## el UNICO feedback de esta ranura era trigger_hit_shake(), que encima solo
+## disparaba si hit_occurred -- si fallabas, o si el chakra se gastaba sin
+## que el jugador lo notase, no habia NINGUNA señal en pantalla. Ahora
+## _spawn_loadout_fx() se llama siempre, golpee o no, mismo criterio que
+## submit_projectile_attack (que instancia el proyectil aunque falle).
 @rpc("any_peer", "call_local", "reliable")
-func confirm_loadout_technique(slot_id: String, new_chakra: float, cooldown: float, hit_occurred: bool) -> void:
+func confirm_loadout_technique(slot_id: String, new_chakra: float, cooldown: float, hit_occurred: bool, shape: String, facing_dir: Vector2, shape_size: float, cone_degrees: float) -> void:
 	chakra_current = new_chakra
 	_start_cooldown(slot_id, cooldown)
+	_spawn_loadout_fx(shape, facing_dir, shape_size, cone_degrees)
 	if hit_occurred:
 		trigger_hit_shake()
+
+## Instancia el placeholder visual de la tecnica de loadout (ver
+## melee_technique_fx.gd para el detalle) centrado en el jugador que la usa.
+## Mismo patron que _spawn_status_tag: instancia en NetworkManager.effects_root,
+## sin efecto si todavia no esta asignado (p.ej. arranque muy temprano).
+func _spawn_loadout_fx(shape: String, facing_dir: Vector2, shape_size: float, cone_degrees: float) -> void:
+	var effects_root: Node = NetworkManager.effects_root
+	if effects_root == null:
+		return
+	var fx_scene: PackedScene = preload("res://scenes/combat/melee_technique_fx.tscn")
+	var fx: Node2D = fx_scene.instantiate()
+	fx.shape = shape
+	fx.element = style_data.element_name
+	fx.facing_dir = facing_dir
+	fx.range_or_radius = shape_size
+	fx.cone_degrees = cone_degrees
+	effects_root.add_child(fx)
+	fx.global_position = global_position
 
 ## T4: punto de entrada para que la Tienda de Pergaminos (T5, casino-agent)
 ## cambie que tecnica ocupa Q o E. Host-autoritativo: "factory" siempre vale
