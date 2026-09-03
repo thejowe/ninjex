@@ -300,15 +300,29 @@ var pergaminos_sellos_comprados: Dictionary = {}
 ## Sin entrada para un peer, o sin clave "Q"/"E" dentro de su Dictionary ==
 ## la tecnica de FABRICA de ese hueco para el estilo actual (ver
 ## player.gd._equipped_loadout_technique(), que devuelve "factory" por
-## defecto). Este es el PUNTO DE EXTENSION deliberado para T4 (pool de
-## tecnicas de pergamino por estilo, fuera de esta tanda): T4 solo necesita
-## anadir mas ids ademas de "factory" al match de
-## player.gd.submit_loadout_technique() y un flujo en la Tienda de
-## Pergaminos (T5, casino-agent) que escriba aqui via un futuro
-## confirm_equipar_tecnica -- la ranura Q/E en si (RPC submit_/confirm_,
-## cooldown propio, coste de chakra) ya no hay que tocarla. Solo lo mutara
-## el host cuando exista ese flujo; de momento nada escribe aqui todavia.
+## defecto). Un id distinto de "factory" viene del pool de T4 (ver
+## StyleData.pergaminos_pool / pergaminos_aprendidos abajo) y debe estar
+## aprendido para el peer+estilo o player.gd.submit_equipar_tecnica_loadout
+## lo rechaza. Solo lo muta player.gd.confirm_equipar_tecnica_loadout -- T5
+## (Tienda de Pergaminos, casino-agent) llama a submit_equipar_tecnica_loadout
+## tras cobrar las fichas de la compra, la ranura Q/E en si (RPC submit_/
+## confirm_, cooldown propio, coste de chakra) no hay que tocarla.
 var loadout_equipped: Dictionary = {}
+
+## Tecnicas de pergamino APRENDIDAS del pool de T4 -- peer_id -> Dictionary
+## {element_name: String -> Array[String]} (ids de PergaminoTechnique
+## comprados para ESE estilo, ver StyleData.pergaminos_pool). Distinto de
+## loadout_equipped de arriba: esto es "aprendida y guardada", loadout_equipped
+## es "equipada ahora mismo en Q o en E" -- una tecnica puede estar aqui sin
+## estar equipada (comprada pero guardada) o dejar de estar equipada sin
+## perderse de aqui (T5 solo necesita re-equipar, no volver a pagar). Mismo
+## patron por-peer-y-por-estilo que pergaminos_sellos_comprados de arriba,
+## compra unica y permanente. "factory" nunca aparece aqui -- esta siempre
+## disponible sin comprar (T2), no es parte del pool de T4. Solo lo mutara
+## la compra real de T5 (confirm_comprar_tecnica_loadout, aun no existe);
+## player.gd.submit_equipar_tecnica_loadout ya lo CONSULTA para validar el
+## equipado.
+var pergaminos_aprendidos: Dictionary = {}
 
 ## Medidor de sospecha (H6 casino, brief 2.3 / diseno "El casino") -- POR
 ## JUGADOR, no compartido como los pools de dinero: "te vigilan a ti", no al

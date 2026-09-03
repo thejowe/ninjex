@@ -2260,15 +2260,18 @@ func confirm_sellos_technique(new_chakra: float) -> void:
 # propio jugador. Todos los estilos, incluido Fisico, tienen las dos (Fisico
 # sin coste de chakra, igual que el Agarre/Lanzamiento/Sellos-fisico).
 #
-# Punto de extension para T4 (pool de tecnicas de pergamino, fuera de esta
-# tanda): _equipped_loadout_technique() ya resuelve la tecnica activa de
-# cada hueco por id en vez de tener el efecto fijo -- hoy solo existe
-# "factory" (rama _:  en el match de abajo), T4 solo necesita anadir mas
-# ids al match y un flujo en la Tienda de Pergaminos (T5, casino-agent) que
-# escriba en NetworkManager.loadout_equipped.
+# T4 (pool de tecnicas de pergamino) ya esta hecho: _equipped_loadout_technique()
+# resuelve "factory" o cualquier id del pool de StyleData.pergaminos_pool
+# (ver PergaminoTechnique) leyendo NetworkManager.loadout_equipped.
+# submit_equipar_tecnica_loadout()/confirm_equipar_tecnica_loadout() (mas
+# abajo) son el punto de entrada que T5 (Tienda de Pergaminos, casino-agent)
+# llama para cambiar que tecnica ya aprendida ocupa Q o E -- T4 no
+# implementa la compra en si (eso gasta fichas y anade a
+# NetworkManager.pergaminos_aprendidos, ver tienda_pergaminos.gd de T5).
 # =========================================================================
 
-## "factory" hasta que exista T4 -- ver NetworkManager.loadout_equipped.
+## Devuelve el id equipado en `slot` ("factory" por defecto -- ver
+## NetworkManager.loadout_equipped).
 func _equipped_loadout_technique(slot: String) -> String:
 	var peer_id := get_multiplayer_authority()
 	var equipped: Dictionary = NetworkManager.loadout_equipped.get(peer_id, {})
@@ -2289,38 +2292,61 @@ func submit_loadout_technique(slot: String, aim_point: Vector2) -> void:
 	var slot_id := "loadout_q" if slot == "Q" else "loadout_e"
 	if _cooldown_remaining(slot_id) > 0.0:
 		return
-	var cost: float = style_data.loadout_q_chakra_cost if slot == "Q" else style_data.loadout_e_chakra_cost
-	var cooldown: float = style_data.loadout_q_cooldown if slot == "Q" else style_data.loadout_e_cooldown
+	# T4: la tecnica equipada decide coste/cooldown/daño/forma -- "factory"
+	# usa los campos fijos de siempre (Q = cono, E = area), cualquier otro id
+	# viene del pool de StyleData (PergaminoTechnique lleva su propio shape,
+	# por eso una tecnica del pool funciona igual de bien en Q que en E).
+	var technique_id := _equipped_loadout_technique(slot)
+	var cost: float
+	var cooldown: float
+	var damage: float
+	var shape: String
+	var hit_range: float
+	var cone_degrees: float
+	var radius: float
+	if technique_id == "factory":
+		cost = style_data.loadout_q_chakra_cost if slot == "Q" else style_data.loadout_e_chakra_cost
+		cooldown = style_data.loadout_q_cooldown if slot == "Q" else style_data.loadout_e_cooldown
+		damage = style_data.loadout_q_damage if slot == "Q" else style_data.loadout_e_damage
+		shape = "cone" if slot == "Q" else "area"
+		hit_range = style_data.loadout_q_range
+		cone_degrees = style_data.loadout_q_cone_degrees
+		radius = style_data.loadout_e_radius
+	else:
+		var tech := style_data.find_pergamino_technique(technique_id)
+		if tech == null:
+			return # id desconocido/manipulado -- no deberia pasar (solo se equipan ids aprendidos)
+		cost = tech.chakra_cost
+		cooldown = tech.cooldown
+		damage = tech.damage
+		shape = tech.shape
+		hit_range = tech.hit_range
+		cone_degrees = tech.cone_degrees
+		radius = tech.radius
 	var usa_chakra: bool = style_data.chakra_max > 0.0
 	if usa_chakra and chakra_current < cost:
 		return
 	var new_chakra: float = chakra_current - cost if usa_chakra else chakra_current
 	var damage_type := _basic_damage_type()
-	var mult: float = _current_damage_multiplier()
+	var final_damage: float = damage * _current_damage_multiplier()
 	var hit_occurred := false
-	match _equipped_loadout_technique(slot):
-		"factory":
-			if slot == "Q":
-				var facing_dir: Vector2 = aim_point - global_position
-				if facing_dir.length() < 0.001:
-					facing_dir = Vector2.RIGHT.rotated(_torso.rotation)
-				facing_dir = facing_dir.normalized()
-				var damage: float = style_data.loadout_q_damage * mult
-				for enemigo in _find_enemies_in_cone(style_data.loadout_q_range, style_data.loadout_q_cone_degrees, facing_dir):
-					hit_occurred = true
-					if enemigo.has_method("recibir_daño"):
-						enemigo.recibir_daño(damage_type, damage)
-			else:
-				var damage: float = style_data.loadout_e_damage * mult
-				for enemigo in get_tree().get_nodes_in_group(GRUPO_ENEMIGOS):
-					if not (enemigo is Node2D):
-						continue
-					if global_position.distance_to(enemigo.global_position) <= style_data.loadout_e_radius:
-						hit_occurred = true
-						if enemigo.has_method("recibir_daño"):
-							enemigo.recibir_daño(damage_type, damage)
-		_:
-			return # id de tecnica desconocido -- no deberia pasar hasta T4
+	if shape == "cone":
+		var facing_dir: Vector2 = aim_point - global_position
+		if facing_dir.length() < 0.001:
+			facing_dir = Vector2.RIGHT.rotated(_torso.rotation)
+		facing_dir = facing_dir.normalized()
+		for enemigo in _find_enemies_in_cone(hit_range, cone_degrees, facing_dir):
+			hit_occurred = true
+			if enemigo.has_method("recibir_daño"):
+				enemigo.recibir_daño(damage_type, final_damage)
+	else:
+		for enemigo in get_tree().get_nodes_in_group(GRUPO_ENEMIGOS):
+			if not (enemigo is Node2D):
+				continue
+			if global_position.distance_to(enemigo.global_position) <= radius:
+				hit_occurred = true
+				if enemigo.has_method("recibir_daño"):
+					enemigo.recibir_daño(damage_type, final_damage)
 	confirm_loadout_technique.rpc(slot_id, new_chakra, cooldown, hit_occurred)
 
 @rpc("any_peer", "call_local", "reliable")
@@ -2329,6 +2355,38 @@ func confirm_loadout_technique(slot_id: String, new_chakra: float, cooldown: flo
 	_start_cooldown(slot_id, cooldown)
 	if hit_occurred:
 		trigger_hit_shake()
+
+## T4: punto de entrada para que la Tienda de Pergaminos (T5, casino-agent)
+## cambie que tecnica ocupa Q o E. Host-autoritativo: "factory" siempre vale
+## (T2, gratis); cualquier otro id debe existir en style_data.pergaminos_pool
+## Y estar en NetworkManager.pergaminos_aprendidos para ESTE peer y estilo
+## (comprada) -- si no, la peticion se descarta en silencio, igual que el
+## resto de submit_* ante datos manipulados. Esta funcion NO gasta fichas ni
+## toca pergaminos_aprendidos: eso es la compra (T5); esto es solo "poner en
+## Q/E algo que ya tienes", que tambien hace falta para volver a la de
+## fabrica o cambiar entre dos tecnicas ya compradas sin pagar de nuevo.
+@rpc("any_peer", "call_local", "reliable")
+func submit_equipar_tecnica_loadout(slot: String, technique_id: String) -> void:
+	if not multiplayer.is_server():
+		return
+	if not _validate_sender():
+		return
+	if slot != "Q" and slot != "E":
+		return # peticion manipulada -- solo existen estos dos huecos
+	if technique_id != "factory":
+		if style_data.find_pergamino_technique(technique_id) == null:
+			return # id no existe en el pool de este estilo -- manipulado
+		var peer_id := get_multiplayer_authority()
+		var aprendidas: Array = NetworkManager.pergaminos_aprendidos.get(peer_id, {}).get(style_data.element_name, [])
+		if not aprendidas.has(technique_id):
+			return # no comprada para este estilo todavia -- ver T5
+	confirm_equipar_tecnica_loadout.rpc(get_multiplayer_authority(), slot, technique_id)
+
+@rpc("any_peer", "call_local", "reliable")
+func confirm_equipar_tecnica_loadout(peer_id: int, slot: String, technique_id: String) -> void:
+	var equipped: Dictionary = NetworkManager.loadout_equipped.get(peer_id, {})
+	equipped[slot] = technique_id
+	NetworkManager.loadout_equipped[peer_id] = equipped
 
 # =========================================================================
 # Puertas (solo Fisico) -- mantener F.

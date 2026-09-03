@@ -291,5 +291,63 @@ class_name StyleData
 @export var soporte_range: float = 120.0
 @export var soporte_cone_degrees: float = 60.0
 
+@export_group("Pool de pergaminos (T4)")
+## Tecnicas comprables en la Tienda de Pergaminos (T5, casino-agent) mas
+## alla de la de fabrica ("factory") de cada hueco Q/E -- ver
+## PergaminoTechnique y NetworkManager.pergaminos_aprendidos/loadout_equipped
+## para el estado de red. Vacio por defecto: se rellena en _init() de abajo
+## con el mismo catalogo placeholder para los 6 estilos (ningun .tres lo
+## serializa todavia, asi que el default de _init() es lo que se usa en
+## todos), consistente con que esta tanda pide numeros placeholder, no sabor
+## elemental por estilo -- eso es tuning/arte fuera de T4.
+@export var pergaminos_pool: Array[PergaminoTechnique] = []
+
+func _init() -> void:
+	if pergaminos_pool.is_empty():
+		pergaminos_pool = _build_default_pergaminos_pool()
+
+func _build_default_pergaminos_pool() -> Array[PergaminoTechnique]:
+	var cono_reforzado := PergaminoTechnique.new()
+	cono_reforzado.id = "cono_reforzado"
+	cono_reforzado.display_name = "Corte reforzado (placeholder)"
+	cono_reforzado.shape = "cone"
+	cono_reforzado.chakra_cost = 22.0
+	cono_reforzado.cooldown = 3.0
+	cono_reforzado.damage = 20.0
+	cono_reforzado.hit_range = 95.0
+	cono_reforzado.cone_degrees = 55.0
+	cono_reforzado.ficha_price = 25
+
+	var onda_amplia := PergaminoTechnique.new()
+	onda_amplia.id = "onda_amplia"
+	onda_amplia.display_name = "Onda amplia (placeholder)"
+	onda_amplia.shape = "area"
+	onda_amplia.chakra_cost = 30.0
+	onda_amplia.cooldown = 6.0
+	onda_amplia.damage = 16.0
+	onda_amplia.radius = 130.0
+	onda_amplia.ficha_price = 35
+
+	var golpe_preciso := PergaminoTechnique.new()
+	golpe_preciso.id = "golpe_preciso"
+	golpe_preciso.display_name = "Golpe preciso (placeholder)"
+	golpe_preciso.shape = "cone"
+	golpe_preciso.chakra_cost = 15.0
+	golpe_preciso.cooldown = 2.0
+	golpe_preciso.damage = 12.0
+	golpe_preciso.hit_range = 110.0
+	golpe_preciso.cone_degrees = 30.0
+	golpe_preciso.ficha_price = 40
+
+	return [cono_reforzado, onda_amplia, golpe_preciso]
+
+## Busca una tecnica del pool por id ("factory" nunca esta aqui, se resuelve
+## aparte en player.gd). Devuelve null si no existe -- id manipulado/viejo.
+func find_pergamino_technique(technique_id: String) -> PergaminoTechnique:
+	for tech in pergaminos_pool:
+		if tech.id == technique_id:
+			return tech
+	return null
+
 @export_group("Vida")
 @export var vida_maxima: float = 100.0
